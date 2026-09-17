@@ -106,7 +106,7 @@ The Trading Bot acts opportunistically within the mesh, executing trades based o
 * **Key Features:**
   - **Multi-Timeframe Analysis:** Tracks 7-day, 14-day, and 30-day moving averages with z-score signals.
   - **Adaptive Tranche Sizing:** Velocity × Resistance × Confidence multipliers.
-  - **Hard Capital Ceiling:** 500 XRP equivalent per cycle maximum.
+  - **Hard Capital Ceiling:** 50 XRP equivalent per cycle maximum.
   - **Parallel Execution:** Runs independently alongside StreamProcessor and MeanReversionEngine.
 * **Target:** Macro divergences (2σ+ z-score) on 7-30 day windows.
 
@@ -118,7 +118,7 @@ The Trading Bot acts opportunistically within the mesh, executing trades based o
   - **Peak Tracking:** Tracks peak ratios and PnLs for all monitored positions.
   - **Stagnation Detection:** Identifies low-variance consolidation after pumps.
   - **Event Logging:** Persists STAGNATION_EXIT events to QuestDB via ManualPositionTrackerService.
-* **Target Pairs:** XRP/XAH, XRP/ARC, XRP/404, XRP/LOL, XRP/PEPE, XRP/TRUMP, XRP/BEES, XRP/CROAK, XRP/AXONE, XRP/BSS, XRP/VBC, XRP/VOLT, XRP/VNLA, XRP/VINO, XRP/MONKEY, XRP/SUPA, XRP/TASTY, XRP/WORM, XRP/STUPID.
+
 ## 5. Real-Time Infrastructure
 
 ### 5.1 QuestDB State Ingestion
