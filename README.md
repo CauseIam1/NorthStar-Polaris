@@ -1,3 +1,5 @@
+![Bot r-address asset-to-asset swaps visually](Bot_wallet.png)
+
 # Project North Star
 I. Hardware & System Profiles
 1. Primary Core Server (The Mainframe)
