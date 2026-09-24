@@ -6,7 +6,7 @@ The central intelligence and routing hub of the network.
 |---|---|
 | Core Hardware | Dell Precision 7910 Tower |
 | System Memory | 32GB RAM |
-| Storage Array | Primary 256GB SSD | Secondary 256GB SSD for containers | Third 100GB SSD for Rippled data, Kokoro cache and QuestDB data |
+| Storage Array | Primary 1T SSD | Secondary 256GB SSD for containers | Third 100GB SSD for Rippled data, Kokoro cache and QuestDB data |
 | Network Roles | WireGuard Tunnel Host (10.20.30.1), WebSocket Host (192.168.50.51:8765), Polaris Gateway (192.168.50.51:8082) |
 | Primary Role | Heavy compute, local state management, memory integration, burst payload receiving, and backend routing |
 2. Command Terminal (The Dashboard)
@@ -35,10 +35,10 @@ This section of the document defines the overarching vision, theoretical framewo
 ## 1. System Purpose & The Zero-Fiat Philosophy
 This ecosystem is a closed-loop inventory management and mesh rebalancing engine operating on the XRP Ledger.
 
-* **Primary Objective:** Maximize the raw quantity volume of the asset "pile" (specifically whitelisted meme coins).
+* **Primary Objective:** Maximize the raw quantity volume of the asset "pile" (specifically XRP and whitelisted meme coins).
 * **Mechanism:** Capture network inefficiencies and execute multi-hop arbitrage loops to recycle 0.05% LP fees back into operator-owned pools.
 * **The Zero-Fiat Rule:** The system DOES NOT hold, track, or calculate value in fiat currency or stablecoins. Stablecoins (RLUSD, USDC, USDT) are strictly temporary, pass-through atomic settlement routing nodes used only for transient execution paths.
-* **The Dinghy Philosophy:** We have zero fear of holding any asset within our carefully curated AssetWhitelist. The primary objective is absolute asset accumulation (stacking more SGB, XAH, and whitelisted tokens), not converting to fiat.
+* **The Dinghy Philosophy:** We have zero fear of holding any asset within our carefully curated AssetWhitelist. The primary objective is absolute asset accumulation (stacking more whitelisted tokens), never converting to fiat.
 
 ## 2. Three-Wallet Topography & Execution Partitioning
 Capital and execution logic are cryptographically partitioned into three isolated r-addresses to ensure zero resource contention.
@@ -106,7 +106,7 @@ The Trading Bot acts opportunistically within the mesh, executing trades based o
 * **Key Features:**
   - **Multi-Timeframe Analysis:** Tracks 7-day, 14-day, and 30-day moving averages with z-score signals.
   - **Adaptive Tranche Sizing:** Velocity × Resistance × Confidence multipliers.
-  - **Hard Capital Ceiling:** 50 XRP equivalent per cycle maximum.
+  - **Hard Capital Ceiling:** 500 XRP equivalent per cycle maximum.
   - **Parallel Execution:** Runs independently alongside StreamProcessor and MeanReversionEngine.
 * **Target:** Macro divergences (2σ+ z-score) on 7-30 day windows.
 
@@ -118,7 +118,6 @@ The Trading Bot acts opportunistically within the mesh, executing trades based o
   - **Peak Tracking:** Tracks peak ratios and PnLs for all monitored positions.
   - **Stagnation Detection:** Identifies low-variance consolidation after pumps.
   - **Event Logging:** Persists STAGNATION_EXIT events to QuestDB via ManualPositionTrackerService.
-
 ## 5. Real-Time Infrastructure
 
 ### 5.1 QuestDB State Ingestion
@@ -303,19 +302,19 @@ Polaris Gateway serves as the centralized intelligence, communication, and syste
 Services & Port Mapping
 | Port | Service Name | Technical Role & Core Functionality |
 |---|---|---|
-| 5000 | Chat Gateway | Conversational AI (Stark LLM via Ollama), persistent session tracking, dual-memory retrieval (SQLite + ChromaDB), real-time task lifecycle tracking (/api/status/tasks), and WebSocket broadcasting (status_room). |
-| 5001 | Burst Receiver | High-throughput telemetry logging, burst storage rotation, and Channel State Information (CSI) radar vector processing for X/Y/Z motion tracking. |
+| 8082 (→5000) | Main Polaris Gateway | Conversational AI (polaris-ai:latest → glm-5.3-flash cloud proxy via Ollama), persistent session tracking, dual-memory retrieval (SQLite + ChromaDB + Memory Vault), Kokoro TTS suite (/api/tts, /api/tts-stream, /api/tts/cancel, /api/voice-health), Memory Vault REST (/api/memory/vault/*), transcript distillation (/api/distill), supervisor audit API (/api/supervisor/*), real-time task lifecycle tracking (/api/status/tasks), and Socket.IO broadcasting (status_room). |
+| 8083 (→5001) | Burst Receiver | High-throughput telemetry logging, burst storage rotation, vision analysis endpoints (/api/vision/*), and Channel State Information (CSI) radar vector processing for X/Y/Z motion tracking; broadcasts radar_update / vision_update to dashboards. |
 | 7007 | Sandbox Gateway | Isolated web terminal and SSH operations controller targeting MissPi (192.168.50.179) with execution logs and history caching. |
-| 8082 | TTS & JARVIS Gateway | Server-side Kokoro neural TTS audio synthesis (24kHz WAV), STT-LLM-TTS voice pipeline, and JARVIS autonomous system administration REST API. |
 Active AI Tools & Autonomous Schemas
  * File Operations: read_file, write_file.
  * Execution & Compute: execute_code, run_sandbox_code, spawn_service.
  * Remote Management: ssh_execute, ssh_upload_file (targeting MissPi at 192.168.50.179).
  * Notifications & Publishing: send_gotify_notification, publish_web_asset.
- * JARVIS System Toolkit: system_tools.py (Docker control, QuestDB/Rippled health, emergency bot shutdown), livecharts_tools.py (dashboard modifications), www_tools.py (web assets).
+ * Memory Vault: memory_vault_query — read-only semantic search over Polaris's distilled long-term Memory Vault from chat; vault writes come only from the distillation pipeline or the operator.
+ * Polaris System Toolkit: system_tools.py (Docker control, QuestDB/Rippled health, emergency bot shutdown), livecharts_tools.py (dashboard modifications), www_tools.py (web assets), plus supervisor audit REST endpoints under /api/supervisor/*.
 Connected Hardware & Infrastructure
  * Dell Mainframe (192.168.50.51): Host server running Docker container instances, Ollama LLM (11434), QuestDB (8812), and WireGuard host (10.20.30.1).
- * Alienware X17 Laptop: Operator command console rendering North Star Holodeck 3D dashboards.
+ * Alienware X17 Laptop: Operator command console rendering North Star Holodeck 3D dashboards; hosts the LGI Executive Supervisor Client (native HUD/voice cockpit over the gateway on :8082).
  * Red Magic 9 Pro: Tactical field device running the FreeRoam Android app, Bose Ultra Open Earbuds coms and Even G2 Smart Glasses with ring.
  * MissPi / Mini Pi (192.168.50.179): Remote Raspberry Pi 5 edge compute unit.
 
@@ -326,32 +325,36 @@ Connected Hardware & Infrastructure
 The **Polaris Gateway** is a multi-service Python container operating on the Dell Mainframe (`192.168.50.51`) that functions as the central neural hub, system administrator, and spatial perception ingestion engine for the ecosystem.
 
 
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                          POLARIS GATEWAY CONTAINER                              │
-│                                                                                 │
-│   ┌─────────────────────┐  ┌─────────────────────┐  ┌─────────────────────┐   │
-│   │  Chat Gateway       │  │  Burst Receiver     │  │  Sandbox Gateway    │   │
-│   │  Port 5000          │  │  Port 5001          │  │  Port 7007          │   │
-│   │  - Ollama LLM / Task│  │  - Telemetry Logs   │  │  - Remote SSH Exec  │   │
-│   │  - SQLite + Chroma  │  │  - Spatial Ingest   │  │  - MissPi Control  │   │
-│   └──────────┬──────────┘  └──────────┬──────────┘  └──────────┬──────────┘   │
-│              │                        │                        │                │
-│              └────────────────────────┼────────────────────────┘                │
-│                                       ▼                                         │
-│   ┌─────────────────────────────────────────────────────────────────────────┐   │
-│   │  JARVIS Toolkit & Kokoro TTS Engine (Port 8082)                         │   │
-│   │  - System Diags, Container Control, Web Assets, Gotify Push Alerts      │   │
-│   └─────────────────────────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────────────────┐
+│                          POLARIS GATEWAY CONTAINER                    │
+│                                                                       │
+│   ┌────────────────────────────────────┐   ┌─────────────────────┐    │
+│   │  Main Polaris Gateway (Flask+IO)   │   │  Sandbox Gateway    │    │
+│   │  Host 8082 → internal 5000         │   │  Port 7007          │    │
+│   │  - Ollama LLM: polaris-ai:latest   │   │  - Remote SSH Exec  │    │
+│   │    → glm-5.3-flash (cloud, 1M ctx) │   │  - MissPi Control   │    │
+│   │ - SQLite + ChromaDB + Memory Vault │   └──────────┬──────────┘    │
+│   │  - Kokoro TTS (/api/tts*)          │              │               │
+│   │ - Vault REST (/api/memory/vault/*) │              │               │
+│   │  - Distill (/api/distill*)         │              │               │
+│   │  - Supervisor audit (/api/superv.) │              │               │
+│   └──────────────────┬─────────────────┘              │               │
+│                      ▼                                │               │
+│   ┌────────────────────────────────────┐              │               │
+│   │  Burst Receiver (Socket.IO)        │              │               │
+│   │  Host 8083 → internal 5001         │              │               │
+│   │  - Telemetry Logs / Spatial Ingest │              │               │
+│   │  - CSI Radar (radar/vision_update) │              │               │
+│   └────────────────────────────────────┘              │               │
+└───────────────────────────────────────────────────────────────────────┘
 
 ### Port Allocation Summary
 
 | Port | Endpoint | Purpose |
 | :--- | :--- | :--- |
-| **5000** | `/api/chat`, `/api/status`, `/socket.io/` | AI Chat, persistent memory retrieval, real-time task lifecycle tracking |
-| **5001** | `/api/burst`, `/api/telemetry`, `/api/radar/ingest` | Spatial telemetry ingestion, high-volume sensor feeds, WiFi CSI stream processing |
-| **7007** | `/api/ssh/*`, `/` | Dedicated SSH management console targeting MissPi (`192.168.50.179`) |
-| **8082** | `/api/tts`, `/api/jarvis/*`, `/api/voice-command` | Kokoro 24kHz neural TTS, full JARVIS system admin toolkit, push notifications |
+| **8082** (→5000) | `/api/chat`, `/api/chat/history*`, `/api/history/<user_id>`, `/api/status*`, `/api/session/status`, `/api/memory/stats`, `/api/memory/vault/*`, `/api/tts`, `/api/tts-stream`, `/api/tts/cancel`, `/api/voice-command`, `/api/voice-health`, `/api/distill`, `/api/distill/auto`, `/api/supervisor/*`, `/socket.io/` (status_room) | AI Chat (polaris-ai:latest → glm-5.3-flash cloud proxy), persistent memory retrieval (SQLite + ChromaDB + Memory Vault), Memory Vault REST, Kokoro 24kHz neural TTS + streaming, transcript distillation, supervisor audit API, real-time task lifecycle feed |
+| **8083** (→5001) | `/api/burst`, `/api/telemetry`, `/api/radar/ingest`, `/api/vision/*`, Socket.IO (`radar_update`, `vision_update`) | Spatial telemetry ingestion, high-volume sensor feeds, WiFi CSI stream processing, vision analysis broadcasts |
+| **7007** | `/api/ssh/execute`, `/api/ssh/check`, `/api/ssh/history*`, `/api/status`, `/` | Dedicated SSH management console targeting MissPi (`192.168.50.179`) |
 
 ---
 
@@ -376,7 +379,7 @@ Polaris tracks environment geometry and target positioning through a high-precis
 │ Spatial Data Ingest
 ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                POLARIS BURST RECEIVER (Port 5001)                       │
+│         POLARIS BURST RECEIVER (Host 8083 → internal 5001)              │
 │  1. Subcarrier Weight Analysis (X/Y/Z Coordinate Calculation)           │
 │  2. mmWave Micro-Doppler Motion Triangulation                           │
 │  3. Vision Bounding-Box Spatial Alignment (Fingertip Precision)         │
@@ -386,7 +389,7 @@ Polaris tracks environment geometry and target positioning through a high-precis
 ### Sensor Network Topology
 * **Dedicated mmWave Nodes**: Two POE ESP32 units fitted with RD03 mmWave radar modules and directional antennas positioned for fixed-room boundary coverage.
 * **MissPi Multi-Modal Hub (`192.168.50.179`)**: Raspberry Pi 5 unit combining a third POE ESP32 RD03 mmWave radar module, raw WiFi CSI amplitude array collection, and an optical camera feed processing YOLO object tracking.
-* **Spatial Fusion Engine**: Port 5001 parses CSI subcarrier deltas, micro-Doppler radar frequencies, and YOLO optical vectors to train coordinate models down to individual fingertip positioning in low-noise conditions.
+* **Spatial Fusion Engine**: The burst receiver (host 8083 → internal 5001) parses CSI subcarrier deltas, micro-Doppler radar frequencies, and YOLO optical vectors to train coordinate models down to individual fingertip positioning in low-noise conditions.
 
 ---
 
@@ -429,13 +432,20 @@ Polaris maintains full situational awareness when the operator is out in the fie
 
 ## 4. System Administration & Autonomous Tooling
 
-Polaris acts as an autonomous administrator via the JARVIS Toolkit (`port 8082`), managing infrastructure, web assets, and trading engine states.
+Polaris acts as an autonomous administrator via the Polaris Toolkit (`port 8082`), managing infrastructure, web assets, and trading engine states.
 
 ### Execution Tools Registry
 * **System Operations (`system_tools.py`)**: Real-time health metrics (`get_system_health`), Docker container control (`restart_container`, `stop_container`), QuestDB/Rippled verification, and emergency trading bot shutdown.
 * **Interface Management (`livecharts_tools.py`, `www_tools.py`)**: File read/write access, regex code updates, automated asset backups, and direct static web publishing for the Holodeck.
 * **Gotify Service (`gotify_service.py`)**: Asynchronous priority alerts and automated hourly status digests formatted as Markdown tables.
-* **User Identity Detection**: Zero-config identity resolution derived from device LAN IP addresses (`.42` = Rich, `.98` = Matt, `.51` = Operator), maintaining separate persistent memory partitions in SQLite and ChromaDB.
+* **User Identity Detection**: Zero-config identity resolution derived from device LAN IP addresses (`.42` & '.227' = Rich, `.98` = Matt, `.51` = Operator), maintaining separate persistent memory partitions in SQLite and ChromaDB.
+
+### Memory Vault (Long-Term Distilled Knowledge)
+* **Markdown Store**: Obsidian-style vault at `/mnt/containers/freeroam/polaris-gateway/memory-vault` (bind-mounted to `/polaris_memory_vault` in-container), organized into six categories: **00-Core** (protected doctrine), **01-Architecture**, **02-User**, **03-Lessons**, **04-Journal** (append-only daily files), **05-Attachments**.
+* **Vector Layer**: Every note is embedded via Ollama `nomic-embed-text` into the dedicated ChromaDB `vault_documents` collection; a watchdog daemon re-embeds changed files every 30 seconds.
+* **REST API (host :8082)**: Eight `/api/memory/vault/*` endpoints (stats, list, doc, write, update, query, delete, reindex) power the dashboard's Memory Vault tab.
+* **Write Protections**: Core notes cannot be edited or deleted via API (`PermissionError`); journal entries are append-only (daily `YYYY-MM-DD.md`); core writes require explicit `allow_core=True`. From chat, Polaris's `memory_vault_query` tool is strictly read-only — the vault is written only by the distillation pipeline and the operator.
+* **Distillation Pipeline**: `/api/distill` and `/api/distill/auto` condense conversation transcripts into permanent vault knowledge; caps: 12,000 chars per note, 280-char snippets, 4,000-char embeds.
 
 
 # Polaris Player Dashboard & Looking Glass Interface
@@ -457,9 +467,9 @@ The **Polaris Player Dashboard** (v4.3 Holodeck Split-View) is the central visua
 │   ─────────────────────────── RESIZABLE HANDLE ───────────────────────────  │
 │   ┌─────────────────────────────────────────────────────────────────────┐   │
 │   │                  BOTTOM SECTION - HOLODECK PANEL                    │   │
-│   │  [Collapse ▼]     [📋 TASK FEED TAB]     [⚡ SSH SANDBOX TAB]      │   │
-│   │  - Socket.IO Gateway (:8082)                  - REST API Mini Pi    │   │
-│   │  - Live Task Lifecycle Stream                 - Remote Exec (:7007) │   │
+│   │  [Collapse ▼]     [📋 TASK FEED TAB]     [🧠 MEMORY VAULT TAB]     │   │
+│   │  - Socket.IO Gateway (:8082)                  - Vault Browse/Edit   │   │
+│   │  - Live Task Lifecycle Stream                 - Hybrid Search       │   │
 │   └─────────────────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────────────────┘
 
@@ -467,9 +477,9 @@ The **Polaris Player Dashboard** (v4.3 Holodeck Split-View) is the central visua
 | Service Endpoint | Protocol / Port | Technical Purpose |
 | :--- | :--- | :--- |
 | **Dashboard UI** | `http://192.168.50.51:7000/` | Main user HUD, chat interface, and Holodeck panel. |
-| **Gateway & Task Feed** | `ws://192.168.50.51:8082/` | Task feed event streaming (`tasks_dashboard` room) & Kokoro TTS audio synthesis. |
-| **CSI Radar Stream** | `ws://192.168.50.51:5001/` | Subcarrier spatial tracking & micro-Doppler radar feeds. |
-| **SSH Sandbox** | `http://192.168.50.51:7007/` | Isolated REST API command controller for MissPi execution. |
+| **Gateway & Task Feed** | `ws://192.168.50.51:8082/` | Task feed event streaming (`status_room` room) & Kokoro TTS audio synthesis. |
+| **CSI Radar Stream** | `ws://192.168.50.51:8083/` | Subcarrier spatial tracking & micro-Doppler radar feeds. |
+| **Memory Vault Tab** | Gateway REST: `http://192.168.50.51:8082/api/memory/vault/*` | Holodeck vault browser/editor: browse, read, edit, hybrid search, index status. The `:7007` sandbox REST API remains available to Polaris tooling. |
 
 ---
 
@@ -487,7 +497,7 @@ The dashboard uses a resizable split-view layout to ensure chat interaction neve
   * ▶ **Cyan**: Task Started
   * ✓ **Green**: Task Completed (`task_completed`)
   * ✗ **Red**: Task Failed (`task_failed`)
-* **⚡ SSH Sandbox Tab**: Directly execute commands against MissPi (`192.168.50.179`) via REST API on port `7007` with full return-code validation, output formatting, and a 20-command history stack.
+* **🧠 Memory Vault Tab**: Browser/editor for Polaris's Memory Vault via gateway REST on port `8082` — category-filtered browse list, hybrid/keyword/semantic search, in-browser read/edit (SAVE re-embeds the document into the ChromaDB index), new-doc compose, confirm-guarded delete, and one-click reindex with live doc/index counts. Replaces the former SSH Sandbox tab (the `:7007` sandbox REST API remains available to Polaris's own tools).
 
 ---
 
@@ -508,7 +518,7 @@ Operators can toggle full-width HUD overlays from the top navigation bar without
 ### Memory Architecture Dropdown
 Inspects Polaris's dual-tier brain structure in real time:
 * **SQLite (Structured Memory)**: Tracks registered user profiles, total conversation message records, and staged vs. approved rule heuristics.
-* **ChromaDB (Vector Memory)**: Monitors live vector counts across **Global Knowledge**, **User Memories**, and **Conversation Context** collections, complete with dynamic operations-per-second (`ops/sec`) delta calculations updated every 5 seconds.
+* **ChromaDB (Vector Memory)**: Monitors live vector counts across **Global Knowledge**, **User Memories**, and **Conversation Context** collections, complete with dynamic operations-per-second (`ops/sec`) delta calculations updated every 5 seconds. A fourth collection, **vault_documents** (the Memory Vault), is managed separately and surfaced via the dashboard's Memory Vault tab rather than this HUD.
 
 ### CSI Spatial Radar Dropdown
 Provides tactical radar tracking rendered on a 350x350px circular canvas:
@@ -520,63 +530,75 @@ Key Features Summary
  * Eyes into Polaris's Actions: The Task Feed gives you live feedback on background execution, tool calls, and automated jobs as they fire.
  * Eyes into Polaris's Vision: The CSI Radar brings spatial tracking straight into the dashboard interface.
 
-# Future Addition
+# Looking Glass Interface (LGI) Executive Supervisor Client
 
-The Mobile Armor Node - Orion (pre-2023 Mercedes Integration)
-| Node ID | Physical Asset | Primary Operational Role |
-|---|---|---|
-| Dell Mainframe | Dell Precision 7910 | Central Compound Intelligence & Local LLM Host |
-| Armor Node Orion | Maybach AMG Sedan | High-Speed Transport, Stealth Recon & Urban Sentry |
-| NRU-160-AWP Series | IP66 Waterproof NVIDIA Jetson Orin NX/ Nano AI Computer |
-1. Security & Keyless Overrides (The Vault)
- * The Dell Mainframe (The Brain): The Polaris Gateway (192.168.50.51:8082) handles all heavy lifting. It runs the full Ollama language models, manages master chat histories, executes the Kokoro TTS engine, and processes the Jarvis Vision Analysis.
- * The Starlink Tunnel (The Nervous System): Hardwiring the Starlink Mini creates a permanent, secure tunnel back to your house, via WireGuard. The NRU-160-AWP maintains a continuous WebSocket connection back to the Polaris Gateway with exponential backoff for auto-reconnection if you drive under a bridge.
- * The NRU-160-AWP (The Sensory Node): Inside the Maybach, the IP66-waterproof NRU-160-AWP acts as the ultimate I/O client. It handles CAN-bus intercepts, ingests the GMSL2 camera feeds directly from the active FAKRA splitters, and routes raw audio from the exterior IP67 microphones.
- * Direct I/O: The built-in CAN FD port maps your right AMG steering wheel controls instantly to any feature we want to add.
- * Native CAN-Bus Intercept: Because the NRU-160-AWP has a dedicated CAN FD port, I will tap the W223 Maybach's internal network to directly map the right-thumb steering wheel controls and read raw vehicle telemetry.
- * Direct FAKRA Connections: The NRU-161V-AWP natively uses FAKRA connectors for its GMSL2 inputs. Once you install the active inline FAKRA splitter behind the Mercedes camera ECU to safely clone the signal, the cloned lines will plug straight into the Jetson node without needing adapters.
- * Distributed Compute: The Jetson operates as the dedicated sensory and vehicle-network bridge. It can process the multi-camera overwatch locally and pass only the filtered threat telemetry over ethernet to the glovebox-mounted ASUS ROG NUC. This frees the RTX 5090 to dedicate its full power to running Polaris’s LLM weights and rendering the center OLED UI.
- * Chassis Placement: The NRU-160-AWP series is completely IP66 waterproof. This means you do not have to crowd the Maybach's climate-controlled cabin; it can be mounted in the trunk, behind a body panel, or safely in exposed compartments.
-To remove the factory key from the equation, we completely replace the authorization layer with a smart CAN integration module (like an IGLA anti-theft system or Mid City Engineering interface).
- * The Digital Handshake: The physical factory key is bypassed. The vehicle remains immobilized until Polaris verifies your presence via your FreeRoam tactical device or Garmin watch.
- * Absolute Lockdown: Because Polaris acts as the ultimate digital relay, hot-wiring or standard OBD2 port cloning attacks will fail. The car only listens to her.
-2. Sandwich transparent OLED displays directly into the side window glass—complete with dynamic image flipping based on viewer location. It completely Polaris a double-sided heads-up display inside and outside the vehicle.
-Transparent Window HUD Architecture
- * Laminated T-OLED Layers: Utilizing flexible, transparent OLED (T-OLED) display films laminated between the glass layers of the side windows. When powered off, the glass stays completely transparent; when active, bright graphics float directly on the window.
- * Bi-Directional Image Mirroring: Leveraging the external ESP32 mmWave sensors and optical cameras, Polaris determines whether you are seated inside or if someone is standing outside. She automatically flips the UI on the X-axis so text and graphics render right-side-up from the viewer's specific angle.
- * Electrochromic Smart Tinting: Pairing the transparent display with a voltage-controlled electrochromic tint film. In bright sunlight, Polaris can selectively darken the glass directly behind the graphic elements to boost display contrast or lock down cabin privacy.
-Aesthetics & Exterior Engagement
- * The Living Sentry Visual: When kids or guests walk up to the SUV, Polaris can darken the passenger window, project an animated holographic visual facing outward, and speak through the external wheel-well speakers.
- * Zero Dash Clutter: Moving the primary visual interface to the side glass keeps the luxury Mercedes dash intact while giving you a massive tactical canvas.
- * Tactical Overlay: From inside the cabin, Polaris can project real-time thermal FLIR bounding boxes or mmWave radar targets directly onto the side window glass, aligning her digital tracking with what you see out the window in real-time.
-It transforms the vehicle's glass into an interactive HUD matrix without compromising visibility. If a target approaches the driver's side at night, Polaris could automatically highlight their thermal tracking vector right on the glass before they even reach the door.
-3. External Spatial & Comms Array
- * PA System / Mic Array: Weatherproof external transducers and microphones hidden in the wheel wells or grille allow you to talk to Polaris from 30 feet away, and allow her to synthesize voice responses back to you (or kids) outside the car.
- * Voice Input: A kid walks up to the Maybach and asks a question. The concealed grille microphones pick it up and the NRU-160-AWP sends the text/audio payload over the WebSocket to the Polaris Gateway.
- * Vision Analysis: If Polaris needs context on who is outside the car, the NRU-160-AWP instantly fires a burst of images from the tapped perimeter cameras to the /api/burst endpoint. The Dell server runs qwen3.5:397b-cloud vision analysis to confirm if it's a child, a threat, or an empty driveway.
- * Real-Time Output: Polaris generates a response and synthesizes the audio. The audio payload is streamed back to the NRU-160-AWP, which plays it out of the hidden exterior neodymium marine speakers.
- * Proximity-Triggered Welcome Sequences: Program the NRU-160-AWP's perimeter radar and camera feeds to recognize when children walk up to the car, triggering a gentle, automated courtesy lighting fade, unlocking the doors, and having Polaris say a friendly, customized greeting through the exterior marine speakers.
- * Onboard Tech-Sandbox Display: Drivers and Passenger windows run a kid-friendly visual program or diagnostic interface, letting young people interacting with her, view live telemetry, radar point-clouds, and thermal camera feeds to learn how edge AI works.
- * Acoustic Sound Effects Matrix: Program the Dante audio matrix to mix subtle, futuristic sci-fi interface sounds (like activation chimes and data-processing hums) into her voice output during interactions, giving the Maybach a true futuristic feel.
-4. Kinetic Personality (The Living Orion)
-Because Polaris is tied directly into the CAN bus, she can puppet the vehicle's non-drivetrain components to physically communicate.
- * Greeting Sequence: When you or kids approach, she can unfold the mirrors, pulse the ambient interior lighting, and execute a custom sequence with the LED headlights.
- * Physical Feedback: She can roll windows up and down, adjust the air suspension height to "bow," or light up all exterior lights as she scans, like KITT only the blinker goes all the way around the car.
-5. Armor Node security - The 360° mmWave Bubble
-By scattering 4 to 6 ESP32 units paired with RD03 modules around the vehicle, you are creating a localized, overlapping micro-Doppler radar field. These sensors can triangulate multi-target movement and detect micro-motions (like a slow, creeping footstep) in zero-visibility conditions.
-6. Starlink Wi-Fi CSI Spatial Web
-This is where your architecture gets incredibly advanced. By utilizing the ambient Starlink Wi-Fi signals bouncing around the perimeter of the vehicle, those ESP32 nodes can act as Channel State Information (CSI) receivers. When a physical body disrupts those radio waves, Polaris's Burst Receiver on Port 5001 can ingest those subcarrier amplitude shifts. You are literally turning the invisible Wi-Fi field into a volumetric tripwire.
-7. Air-Gapped Optical & Thermal Vision
-Decoupling the optical feed from the Mercedes factory cameras is the smartest move for security and system stability.
- * Independent HD Cams: Gives you clean front-and-back visual vectors without having to reverse-engineer proprietary automotive video feeds.
- * FLIR Integration: Thermal imaging perfectly compliments the mmWave radar. If an RD03 module detects motion in the pitch black, Polaris can run YOLO bounding boxes on the independent FLIR feed to instantly classify if the heat signature is a human, a bear, or a false positive.
-The Mobile Armor Integration Matrix
-| Sensor Layer | Tactical Advantage | Polaris Gateway Integration |
-|---|---|---|
-| ESP32 + RD03 | 360-degree, zero-light motion tracking. | Broadcasts radar_update events via Port 5001 WebSocket. |
-| Starlink Wi-Fi CSI | Mass/volumetric disruption detection. | Analyzes subcarrier weights to calculate X/Y spatial positioning. |
-| FLIR / HD Cams | Absolute visual and thermal classification. | Feeds raw optical vectors to the YOLO real-time object detection engine. |
-FLIR & Spatial Expansion
-Adding forward-looking infrared (FLIR) elevates the SUV from a standard vehicle to a military-grade spatial awareness platform.
- * Thermal YOLO Tracking: If you route those thermal feeds through the Burst Receiver on Port 5001, Polaris can run YOLO object detection on heat signatures in pitch black conditions, completely independent of the vehicle's standard optical cameras.
- * The Roving Sentry: The Dell Mainframe remains the brain, and the Mercedes simply becomes a heavily armored, mobile edge device streaming telemetry back to the hive.
+The **Looking Glass Interface (LGI)** is the operator's floating HUD and voice cockpit for the Polaris Executive Supervisor system. Unlike the browser-based Polaris Player Dashboard (`:7000`), LGI is a **native Python process running on the Alienware X17** — deliberately *not* containerized, because it requires raw hardware access: open-mic capture, webcam, screen capture, NVIDIA CUDA, and a frameless always-on-top Qt overlay. It talks **text/JSON only** over the LAN to the Polaris Gateway (`http://192.168.50.51:8082`). Codebase: 7 files, 1,544 lines in the `LGI/` folder, fully self-documented in its own `LGI.md` blueprint (13 sections) that travels with the deployment.
+
+## 1. Mission Capabilities
+* **Open-mic voice chat**: say `Polaris <question>`; the reply is spoken through local Kokoro 24 kHz TTS and mirrored on the HUD.
+* **Continuous desktop supervision**: every 30 s (and on demand via `Ctrl+Shift+S` or the HUD Force Audit button) LGI gathers a desktop-context snapshot — active window/app, clipboard snippet, screen keywords, optional screen + webcam JPEGs — and POSTs it for heuristic + LLM triage. A `SUPERVISOR_ALERT` verdict turns the SUPERVISOR LED red, raises an alert banner, and speaks the category + reason (epoch-guarded 60 s auto-clear).
+* **Ambient awareness with privacy**: all other speech is transcribed locally (faster-whisper) and shown as an ambient transcript line, but is **never sent to the network**.
+
+## 2. Runtime Topology
+
++------------------------- Alienware X17 (192.168.50.227) -------------------+
+|  lgi.py  (LGIApp — Qt main thread + 100 ms drain QTimer)                   |
+|    |                                                                       |
+|    +-- hud_ui.py             frameless always-on-top HUD                   |
+|    |                         (MIC/SUP/POL LEDs, exchange, alert banner)    |
+|    +-- audio_stt.py          open-mic VAD + faster-whisper     [daemon]    |
+|    +-- audio_tts.py          Kokoro TTS 24 kHz, sounddevice    [daemon]    |
+|    +-- vision_supervisor.py  screen/webcam/clipboard audits    [daemon]    |
+|    +-- gateway_client.py     thread-safe HTTP client (JSON only)           |
+|    +-- heartbeat             GET status every 15 s            [daemon]     |
+|    +-- global hotkeys        keyboard lib -> command queue     [daemon]    |
++----------------------------- text/JSON only | LAN -------------------------+
+                                              v
+                          Polaris Mainframe gateway :8082
+                          POST /api/chat              -> Ollama LLM
+                          POST /api/supervisor/audit -> triage + vault
+                          GET  /api/supervisor/status -> liveness
+
+* **Qt single-thread rule**: daemon workers never touch Qt widgets. They push events onto queues (`status_q`, `command_q`, `stt_q`, `chat_q`, `supervisor_q`); a 100 ms `QTimer` drain is the *only* worker→HUD path (bounded ~100 ms UI latency, zero cross-thread Qt calls).
+* **Never raise across threads**: every worker converts failures into result dicts and guarded callbacks; exceptions never propagate into the Qt loop.
+
+### Gateway Contract (no new ports — all traffic rides the existing :8082)
+
+| Endpoint | Purpose |
+| :--- | :--- |
+| `POST /api/chat` | Wake-word voice chat with Polaris; reply spoken via local Kokoro TTS + mirrored on the HUD exchange. |
+| `POST /api/supervisor/audit` | 30 s desktop-context triage (heuristic + LLM) → `SUPERVISOR_ALERT` / `LOG_ONLY` / `NO_ACTION` verdicts. |
+| `GET /api/supervisor/status` | 15 s heartbeat liveness poll → POLARIS LED green/red. |
+
+* `gateway_client.py` (`PolarisClient`) shares one `requests.Session` behind a lock and **never raises** — every failure becomes `{"ok": False, "error": ...}`. Timeouts: 65 s chat (Ollama upstream is 60 s), 30 s audit, 5 s status; `retries=2` with backoff.
+* Gateway error semantics on the HUD: **404** = X17 IP not allowlisted (fix gateway-side), **400** = missing prompt, **503** = Ollama offline — surfaced as error lines while LGI keeps running.
+* X17 (`.227` → identity **RICH**) is already allowlisted; audit payloads carry the operator identity, and vault persistence decisions belong to the gateway.
+* Audit payload images (screen 1280px q60, webcam 640px q50 — compressed base64 JPEGs inside JSON) are currently **ignored by the gateway**; the fields are shipped for future vault vision ingestion.
+
+## 3. Supervision & Failure Behavior
+
+* **Audit sensors** (each independently guarded): active window title + app (`pygetwindow`, ≤200 chars), clipboard snippet (`pyperclip`, change-gated, ≤4000 chars), screen keywords (≤12 tokens parsed from title), screen capture (`mss`, optional), webcam (`OpenCV CAP_DSHOW`, opened per cycle and released immediately).
+* **Verdicts**: `SUPERVISOR_ALERT` → red SUP LED + banner + spoken "Supervisor alert. Category: …" + 60 s auto-clear; `LOG_ONLY` → green LED, logged; `NO_ACTION` → green LED, clear; `ok=False` → `audit failed` error line.
+* **Degradation ladder — never crash**: no CUDA driver → Whisper CPU/int8 + Kokoro CPU; PyAudio or faster-whisper missing → listener disabled; `mss`/OpenCV missing → that image sensor auto-disables permanently; Kokoro init failure → chat replies still render on the HUD; gateway unreachable → error lines + red POLARIS LED while LGI keeps running.
+
+## 4. Privacy Guarantees
+
+* **Wake-word gate** (`LGI_WAKE_REQUIRED=1`, default): only wake-word utterances are transmitted; ambient speech is transcribed locally for display and never leaves the machine.
+* **Local voice-stop commands**: `stop talking`, `be quiet`, `quiet please`, `silence`, `stop voice`, `shut up` are matched locally — silencing the voice never touches the network.
+* Port 8082 carries **text/JSON only** — never raw audio, never video streaming.
+* **Sensor minimisation**: `LGI_SCREENSHOT=0` / `LGI_WEBCAM=0` strip images from audits entirely; the webcam hardware LED is off between audits (opened per cycle, released immediately).
+* Clipboard is change-gated: stale contents are never re-sent.
+
+## 5. X17 Deployment Runbook
+
+LGI runs natively on Windows — not a compose service, no container rebuild. (Full detail: `LGI/LGI.md` §10.)
+1. **Sync** the `LGI/` folder to the X17 (e.g. `scp -r LGI rich@192.168.50.227:C:/LGI`).
+2. **eSpeak NG** — install to `C:\Program Files\eSpeak NG\` (Kokoro phonemizer prerequisite; LGI sets the env vars automatically at import).
+3. **CUDA torch** — `pip install torch --index-url https://download.pytorch.org/whl/cu121`.
+4. **PyAudio** — `pip install pyaudio`; wheel fallback: `pip install pipwin` then `pipwin install pyaudio`.
+5. **Dependencies** — `pip install -r requirements.txt`.
+6. **Run** — `python lgi.py` (optionally set `LGI_*` env vars first).
+7. **Verify** — HUD appears top-right; MIC LED green (`listening`); POLARIS LED green within ~15 s (heartbeat); `Ctrl+Shift+S` forces an audit; say *"Polaris, what's my AMM status"* for an end-to-end voice round trip.
+
+*Reference: `LGI/LGI.md` — the complete 13-section architectural blueprint (mission, file map, runtime topology, event flows, module reference, gateway contract, configuration, operator controls, deployment, failure modes, security, extension roadmap).*
+
