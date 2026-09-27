@@ -626,9 +626,9 @@ LGI runs natively on Windows — not a compose service, no container rebuild. (F
 
 *Reference: `LGI/LGI.md` — the complete 13-section architectural blueprint (mission, file map, runtime topology, event flows, module reference, gateway contract, configuration, operator controls, deployment, failure modes, security, extension roadmap).*
 
-#[Polaris-Gateway.md](Polaris-gateway.md)
+# [Polaris-Gateway.md](Polaris-gateway.md)
 
-#[FreeRoam.md](FreeRoam.md)
+# [FreeRoam.md](FreeRoam.md)
 
 ![Bot r-address asset-to-asset swaps visually](Bot_wallet.png)
 ![Bot r-address asset-to-asset swaps visually](Radar_both_wallets.png)
