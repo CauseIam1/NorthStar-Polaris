@@ -9,16 +9,15 @@ The central intelligence and routing hub of the network.
 | Storage Array | Primary 1T SSD | Secondary 256GB SSD for containers | Third 100GB SSD for Rippled data, Kokoro cache and QuestDB data |
 | Network Roles | WireGuard Tunnel Host (10.20.30.1), WebSocket Host (192.168.50.51:8765), Polaris Gateway (192.168.50.51:8082) |
 | Primary Role | Heavy compute, local state management, memory integration, burst payload receiving, and backend routing |
-2. Command Terminal (The Dashboard)
-The primary operator console and high-fidelity rendering engine.
+2. Executive Supervisor Client (LGI) & Command Terminal
+The primary floating HUD and voice cockpit for the Polaris Executive Supervisor system, which additionally hosts the high-fidelity operator console.
 | Specification | Details |
 |---|---|
-| Core Hardware | Alienware X17 Laptop |
-| Compute & Graphics | NVIDIA GeForce RTX 3080 Ti (16GB GDDR6 VRAM) |
+| Core Hardware | Alienware X17 Laptop running Windows 11 |
+| Compute & Graphics | NVIDIA GeForce RTX 3080 Ti (16GB GDDR6 VRAM) utilizing CUDA |
 | System Memory | 32GB RAM |
 | Primary Display | 32-inch Alienware QD-OLED Monitor |
-| Primary Role | High-fidelity WebGL rendering, primary operator dashboard, manual override, and script staging sandbox |
-3. FreeRoam Mobile Edge (Tactical Field Device)
+| Primary Role | Native Python process providing open-mic voice chat and continuous desktop supervision. Secondary capabilities include high-fidelity WebGL rendering for the operator dashboard, manual override, and script staging sandbox. |3. FreeRoam Mobile Edge (Tactical Field Device)
 The mobile field-compute device for remote situational awareness — a fully on-device walkie-talkie loop with Polaris (on-device STT in, on-device Kokoro TTS out; only text rides the tunnel). Canonical app architecture: [FreeRoam.md](FreeRoam.md) (v3.3, field-verified Sep 26, 2026).
 | Specification | Details |
 |---|---|
