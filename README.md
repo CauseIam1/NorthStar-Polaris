@@ -19,7 +19,7 @@ The primary operator console and high-fidelity rendering engine.
 | Primary Display | 32-inch Alienware QD-OLED Monitor |
 | Primary Role | High-fidelity WebGL rendering, primary operator dashboard, manual override, and script staging sandbox |
 3. FreeRoam Mobile Edge (Tactical Field Device)
-The mobile field-compute device for remote situational awareness — a fully on-device walkie-talkie loop with Polaris (on-device STT in, on-device Kokoro TTS out; only text rides the tunnel). Canonical app architecture: [`/FreeRoam.md`](FreeRoam/FreeRoam.md) (v3.3, field-verified Sep 26, 2026).
+The mobile field-compute device for remote situational awareness — a fully on-device walkie-talkie loop with Polaris (on-device STT in, on-device Kokoro TTS out; only text rides the tunnel). Canonical app architecture: [FreeRoam.md](FreeRoam.md) (v3.3, field-verified Sep 26, 2026).
 | Specification | Details |
 |---|---|
 | Core Hardware | Red Magic 9 Pro (Android) |
@@ -468,7 +468,7 @@ Identity resolves in order: explicit `user_id` in the request body (the dashboar
 * **Transcripts**: read inside the container — `docker exec polaris-gateway tail -50 /data/freeroam/operator/operator_transcripts.log` (the bind mount is root-owned, not host-readable).
 * **Pipeline evidence**: `docker logs polaris-gateway 2>&1 | grep -E 'DEBUG|Tool Execution|GUARDRAIL'` surfaces stripper, parser, and guardrail activity.
 
-*Full current gateway architecture: [`freeroam/Polaris-gateway.md`](freeroam/Polaris-gateway.md) (§3.5 prompt & persona, §3.2 tool pipeline, §7 tool registry).*
+*Full current gateway architecture: [Polaris-Gateway.md](Polaris-gateway.md)(freeroam/Polaris-gateway.md) (§3.5 prompt & persona, §3.2 tool pipeline, §7 tool registry).*
 
 ---
 
