@@ -19,7 +19,7 @@ The primary operator console and high-fidelity rendering engine.
 | Primary Display | 32-inch Alienware QD-OLED Monitor |
 | Primary Role | High-fidelity WebGL rendering, primary operator dashboard, manual override, and script staging sandbox |
 3. FreeRoam Mobile Edge (Tactical Field Device)
-The mobile field-compute device for remote situational awareness — a fully on-device walkie-talkie loop with Polaris (on-device STT in, on-device Kokoro TTS out; only text rides the tunnel). Canonical app architecture: [`FreeRoam.md`](FreeRoam/FreeRoam.md) (v3.3, field-verified Sep 26, 2026).
+The mobile field-compute device for remote situational awareness — a fully on-device walkie-talkie loop with Polaris (on-device STT in, on-device Kokoro TTS out; only text rides the tunnel). Canonical app architecture: [`/FreeRoam.md`](FreeRoam/FreeRoam.md) (v3.3, field-verified Sep 26, 2026).
 | Specification | Details |
 |---|---|
 | Core Hardware | Red Magic 9 Pro (Android) |
