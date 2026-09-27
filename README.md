@@ -1,5 +1,3 @@
-![Bot r-address asset-to-asset swaps visually](Bot_wallet.png)
-
 # Project North Star
 I. Hardware & System Profiles
 1. Primary Core Server (The Mainframe)
@@ -21,14 +19,14 @@ The primary operator console and high-fidelity rendering engine.
 | Primary Display | 32-inch Alienware QD-OLED Monitor |
 | Primary Role | High-fidelity WebGL rendering, primary operator dashboard, manual override, and script staging sandbox |
 3. FreeRoam Mobile Edge (Tactical Field Device)
-The mobile field-compute device for remote situational awareness.
+The mobile field-compute device for remote situational awareness — a fully on-device walkie-talkie loop with Polaris (on-device STT in, on-device Kokoro TTS out; only text rides the tunnel). Canonical app architecture: [`freeroam/freeroam.md`](freeroam/freeroam.md) (v3.3, field-verified Sep 26, 2026).
 | Specification | Details |
 |---|---|
 | Core Hardware | Red Magic 9 Pro (Android) |
-| Wearable Triggers | Garmin PTT Watch Trigger |
+| Wearable Triggers | Garmin watch media buttons over the always-on AVRCP MediaSession tether — PLAY/PAUSE = push-to-talk toggle, STOP = cancel capture / halt playback, BACK/NEXT disabled (works screen-locked) |
 | Audio Output | Bose Ultra Open Earbuds |
-| Local AI Models | Sherpa-ONNX, Kokoro-82M TTS (ONNX Runtime) |
-| Primary Role | Live comms with Polaris, WireGuard tunneling, and burst transmission to the Dell Mainframe |
+| Local AI Models | Android SpeechRecognizer STT (on-device engine preferred) + Kokoro-82M TTS via sherpa-onnx (fully on-device, no cloud TTS) |
+| Primary Role | Live comms with Polaris (screen-locked Garmin watch push-to-talk), WireGuard tunneling, and burst transmission to the Dell Mainframe |
 
 # Project North Star - Trading Bot & Dashboard and Polaris Gateway (Dell Mainframe)
 **Document Status: PRODUCTION ACTIVE**
@@ -304,20 +302,21 @@ Polaris Gateway serves as the centralized intelligence, communication, and syste
 Services & Port Mapping
 | Port | Service Name | Technical Role & Core Functionality |
 |---|---|---|
-| 8082 (→5000) | Main Polaris Gateway | Conversational AI (polaris-ai:latest → glm-5.3-flash cloud proxy via Ollama), persistent session tracking, dual-memory retrieval (SQLite + ChromaDB + Memory Vault), Kokoro TTS suite (/api/tts, /api/tts-stream, /api/tts/cancel, /api/voice-health), Memory Vault REST (/api/memory/vault/*), transcript distillation (/api/distill), supervisor audit API (/api/supervisor/*), real-time task lifecycle tracking (/api/status/tasks), and Socket.IO broadcasting (status_room). |
+| 8082 (→5000) | Main Polaris Gateway | Conversational AI (polaris-ai:latest → glm-5.3-flash cloud proxy via Ollama; North Star-primacy system prompt + server-side tool calling via the 15-tool dispatcher), persistent session tracking, dual-memory retrieval (SQLite + ChromaDB + Memory Vault), Kokoro TTS suite (/api/tts, /api/tts-stream, /api/tts/cancel, /api/voice-command, /api/voice-health), Memory Vault REST (/api/memory/vault/*), transcript distillation (/api/distill), supervisor audit API (/api/supervisor/*), real-time task lifecycle tracking (/api/status/tasks), and Socket.IO broadcasting (status-room task events + per-IP live chat rooms). |
 | 8083 (→5001) | Burst Receiver | High-throughput telemetry logging, burst storage rotation, vision analysis endpoints (/api/vision/*), and Channel State Information (CSI) radar vector processing for X/Y/Z motion tracking; broadcasts radar_update / vision_update to dashboards. |
 | 7007 | Sandbox Gateway | Isolated web terminal and SSH operations controller targeting MissPi (192.168.50.179) with execution logs and history caching. |
-Active AI Tools & Autonomous Schemas
- * File Operations: read_file, write_file.
- * Execution & Compute: execute_code, run_sandbox_code, spawn_service.
- * Remote Management: ssh_execute, ssh_upload_file (targeting MissPi at 192.168.50.179).
- * Notifications & Publishing: send_gotify_notification, publish_web_asset.
- * Memory Vault: memory_vault_query — read-only semantic search over Polaris's distilled long-term Memory Vault from chat; vault writes come only from the distillation pipeline or the operator.
- * Polaris System Toolkit: system_tools.py (Docker control, QuestDB/Rippled health, emergency bot shutdown), livecharts_tools.py (dashboard modifications), www_tools.py (web assets), plus supervisor audit REST endpoints under /api/supervisor/*.
+Active AI Tools & Autonomous Schemas (exactly 15 tools routed by the execute_tool_call() dispatcher; unknown names return a structured Unknown-tool error)
+ * File Operations (file_tools.py): read_doc, write_doc, append_doc, list_docs, delete_doc.
+ * Playground & Sandbox (playground_tools.py): publish_web_asset, list_playground_files, run_sandbox_code, spawn_service, stop_service, list_services.
+ * Remote Management (ssh_tools.py): ssh_execute, ssh_check_connectivity (targeting MissPi at 192.168.50.179).
+ * Notifications (gotify_service.py): send_gotify_notification.
+ * Memory Vault (memory_tools.py): memory_vault_query — read-only semantic search over Polaris's distilled long-term Memory Vault from chat; vault writes come only from the distillation pipeline or the operator.
+ * Supervisor Audit: server-side REST blueprint under /api/supervisor/* (screen/clipboard triage) — separate from the LLM tool dispatcher.
+ * Not wired into the running gateway: system_tools.py (Docker control, QuestDB/Rippled health, emergency bot shutdown), livecharts_tools.py (dashboard modifications), www_tools.py (web assets) — standalone legacy modules imported only by the non-launched freeroam_gateway.py entrypoint. (ssh_upload_file is a dead name — no schema, no dispatcher branch.)
 Connected Hardware & Infrastructure
  * Dell Mainframe (192.168.50.51): Host server running Docker container instances, Ollama LLM (11434), QuestDB (8812), and WireGuard host (10.20.30.1).
  * Alienware X17 Laptop: Operator command console rendering North Star Holodeck 3D dashboards; hosts the LGI Executive Supervisor Client (native HUD/voice cockpit over the gateway on :8082).
- * Red Magic 9 Pro: Tactical field device running the FreeRoam Android app, Bose Ultra Open Earbuds coms and Even G2 Smart Glasses with ring.
+ * Red Magic 9 Pro: Tactical field device running the FreeRoam Android app (v3.3, field-verified Sep 26, 2026) — Bose Ultra Open Earbuds coms, Even G2 Smart Glasses with ring, and Garmin watch push-to-talk over the always-on AVRCP MediaSession tether.
  * MissPi / Mini Pi (192.168.50.179): Remote Raspberry Pi 5 edge compute unit.
 
 # Polaris Gateway & Cross-Device Communications
@@ -334,7 +333,7 @@ The **Polaris Gateway** is a multi-service Python container operating on the Del
 │   │  Main Polaris Gateway (Flask+IO)   │   │  Sandbox Gateway    │    │
 │   │  Host 8082 → internal 5000         │   │  Port 7007          │    │
 │   │  - Ollama LLM: polaris-ai:latest   │   │  - Remote SSH Exec  │    │
-│   │    → glm-5.3-flash (cloud, 1M ctx) │   │  - MissPi Control   │    │
+│   │  → glm-5.3-flash (cloud, 8192 ctx) │   │  - MissPi Control   │    │
 │   │ - SQLite + ChromaDB + Memory Vault │   └──────────┬──────────┘    │
 │   │  - Kokoro TTS (/api/tts*)          │              │               │
 │   │ - Vault REST (/api/memory/vault/*) │              │               │
@@ -373,14 +372,6 @@ Polaris tracks environment geometry and target positioning through a high-precis
             └────────────────┐ ┌──────────────┘
 ▼ ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                     MissPi (RPi 5 Edge Hub)                             │
-│  - 1x Integrated POE ESP32 RD03 mmWave Radar                            │
-│  - WiFi Channel State Information (CSI) Amplitude Stream                │
-│  - Camera Module running YOLO Real-Time Object Detection                │
-└────────────────────────────────────┬────────────────────────────────────┘
-│ Spatial Data Ingest
-▼
-┌─────────────────────────────────────────────────────────────────────────┐
 │         POLARIS BURST RECEIVER (Host 8083 → internal 5001)              │
 │  1. Subcarrier Weight Analysis (X/Y/Z Coordinate Calculation)           │
 │  2. mmWave Micro-Doppler Motion Triangulation                           │
@@ -390,14 +381,13 @@ Polaris tracks environment geometry and target positioning through a high-precis
 
 ### Sensor Network Topology
 * **Dedicated mmWave Nodes**: Two POE ESP32 units fitted with RD03 mmWave radar modules and directional antennas positioned for fixed-room boundary coverage.
-* **MissPi Multi-Modal Hub (`192.168.50.179`)**: Raspberry Pi 5 unit combining a third POE ESP32 RD03 mmWave radar module, raw WiFi CSI amplitude array collection, and an optical camera feed processing YOLO object tracking.
-* **Spatial Fusion Engine**: The burst receiver (host 8083 → internal 5001) parses CSI subcarrier deltas, micro-Doppler radar frequencies, and YOLO optical vectors to train coordinate models down to individual fingertip positioning in low-noise conditions.
+* **Spatial Fusion Engine**: The burst receiver (host 8083 → internal 5001) parses CSI subcarrier deltas, micro-Doppler radar frequencies, and YOLO optical vectors (from LGI on X17) to train coordinate models down to individual fingertip positioning in low-noise conditions.
 
 ---
 
 ## 3. Remote Telemetry, WireGuard & Field Voice Comms
 
-Polaris maintains full situational awareness when the operator is out in the field, utilizing encrypted network tunneling and air-gapped audio integration.
+Polaris maintains full situational awareness when the operator is out in the field, utilizing encrypted network tunneling and a fully on-device audio pipeline — voice capture (STT) and spoken replies (TTS) both run locally on the field device, so only text rides the WireGuard tunnel.
 
 
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -413,6 +403,7 @@ Polaris maintains full situational awareness when the operator is out in the fie
 │                                   ▼ ▼                                   │
 │  ┌───────────────────────────────────────────────────────────────────┐  │
 │  │ Red Magic 9 Pro (FreeRoam Tactical Field App)                     │  │
+│  │ - Garmin watch PTT via MediaSession tether (PLAY = talk)          │  │
 │  └────────────────────────────────┬──────────────────────────────────┘  │
 └───────────────────────────────────┼─────────────────────────────────────┘
 │
@@ -421,26 +412,32 @@ Polaris maintains full situational awareness when the operator is out in the fie
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                    POLARIS GATEWAY (Dell Mainframe)                     │
 │  - continuous passive transcript logging (Polaris stays in loop)        │
-│  - STT -> Ollama LLM -> Kokoro TTS generation pipeline                  │
+│  - text in -> Ollama LLM -> text reply (STT + TTS on-device)            │
 │  - Push notifications routed via Gotify Service                         │
 └─────────────────────────────────────────────────────────────────────────┘
 
 ### Field Communications Protocol
 * **WireGuard Secure Tunnel**: All remote traffic from the Red Magic 9 Pro routes back to the mainframe host (`10.20.30.1`), ensuring an encrypted connection for data ingestion and API access.
-* **Hands-Free Audio**: Interactive speech responses synthesize on Polaris Gateway via Kokoro TTS (24kHz WAV) and stream directly to the operator's Bose Ultra Open Earbuds through the FreeRoam app.
-* **Even G2 Smart Glasses Capture**: Tap-to-speak voice capture on Even G2 smart glasses streams through the local air-gapped pipeline and over WireGuard. Polaris logs both operator dialogue and system responses, maintaining session state across all road interactions.
+* **Garmin Watch Push-to-Talk (v3.3)**: The FreeRoam app holds an always-on paused AVRCP MediaSession from launch (the "tether"), so the Garmin's hardware media buttons drive the app with the screen locked — PLAY/PAUSE toggles push-to-talk (first press starts capture, second stops and auto-sends), STOP cancels a live capture or halts tethered playback, and BACK/NEXT are disabled. The watch marquee-scrolls Polaris's latest reply as the track title. Field-verified end-to-end on the operator's watch, Sep 26, 2026.
+* **Hands-Free Audio (On-Device TTS)**: Every spoken reply is synthesized fully on-device by the FreeRoam app's Kokoro-82M engine (sherpa-onnx, 24 kHz mono PCM16, WAV cache) and plays through the operator's Bose Ultra Open Earbuds — no cloud TTS, no server-side audio round-trips; the gateway exchanges plain text only (v2.9 hardening).
+* **Even G2 Smart Glasses Capture**: Tap-to-speak voice capture on Even G2 smart glasses feeds the FreeRoam app's local air-gapped pipeline; the recognized text travels over WireGuard to Polaris, which logs both operator dialogue and system responses, maintaining session state across all road interactions.
 
 ---
 
 ## 4. System Administration & Autonomous Tooling
 
-Polaris acts as an autonomous administrator via the Polaris Toolkit (`port 8082`), managing infrastructure, web assets, and trading engine states.
+Polaris acts as an autonomous administrator via its 15-tool dispatcher (`execute_tool_call()`, `port 8082`) — file operations, playground/sandbox publishing and service spawning, remote SSH execution, Gotify notifications, and read-only Memory Vault queries. All tool schemas are injected into the LLM system prompt at request time; unknown tool names return `{"success": false, "error": "Unknown tool: …"}`.
 
-### Execution Tools Registry
-* **System Operations (`system_tools.py`)**: Real-time health metrics (`get_system_health`), Docker container control (`restart_container`, `stop_container`), QuestDB/Rippled verification, and emergency trading bot shutdown.
-* **Interface Management (`livecharts_tools.py`, `www_tools.py`)**: File read/write access, regex code updates, automated asset backups, and direct static web publishing for the Holodeck.
-* **Gotify Service (`gotify_service.py`)**: Asynchronous priority alerts and automated hourly status digests formatted as Markdown tables.
-* **User Identity Detection**: Zero-config identity resolution derived from device LAN IP addresses (`.42` & '.227' = Rich, `.98` = Matt, `.51` = Operator), maintaining separate persistent memory partitions in SQLite and ChromaDB.
+### Execution Tools Registry (15 tools)
+* **File Operations (`file_tools.py`)**: `read_doc`, `write_doc`, `append_doc`, `list_docs`, `delete_doc`.
+* **Playground & Sandbox (`playground_tools.py`)**: `publish_web_asset`, `list_playground_files`, `run_sandbox_code`, `spawn_service`, `stop_service`, `list_services` — AI-generated web apps served by the Polaris Playground container (:8090).
+* **Remote Execution (`ssh_tools.py`)**: `ssh_execute`, `ssh_check_connectivity` — targeting MissPi (`192.168.50.179`).
+* **Gotify Service (`gotify_service.py`)**: `send_gotify_notification` — asynchronous priority alerts and automated hourly status digests formatted as Markdown tables.
+* **Memory (`memory_tools.py`)**: `memory_vault_query` — strictly read-only semantic search over the Memory Vault.
+* **Not wired into the running gateway**: `system_tools.py` (Docker container control, QuestDB/Rippled health, emergency trading bot shutdown), `livecharts_tools.py` (dashboard modifications), `www_tools.py` (web assets) — standalone legacy modules imported only by the non-launched `freeroam_gateway.py` entrypoint.
+
+### Operator Identity Detection
+Identity resolves in order: explicit `user_id` in the request body (the dashboard sends `rich`/`matt` on the user's behalf) → client IP (`X-Forwarded-For` first hop, else `remote_addr`). Known IPs: `.42` = Rich, `.98` = Matt, `.51` = the Mainframe itself (persona **Operator**), `.227` = dashboard test machine (persona **Dashboard**), `.179` = MissPi (mapped to **Rich**). Traffic from Docker-bridge ranges (`172.17.*`–`172.20.*`, NAT-masked) falls back to the default **Dashboard** persona. Identity selects the persona, profile/behavior/lists/transcript file paths, session partitioning, and chat history — maintaining separate persistent memory partitions in SQLite and ChromaDB.
 
 ### Memory Vault (Long-Term Distilled Knowledge)
 * **Markdown Store**: Obsidian-style vault at `/mnt/containers/freeroam/polaris-gateway/memory-vault` (bind-mounted to `/polaris_memory_vault` in-container), organized into six categories: **00-Core** (protected doctrine), **01-Architecture**, **02-User**, **03-Lessons**, **04-Journal** (append-only daily files), **05-Attachments**.
@@ -449,6 +446,31 @@ Polaris acts as an autonomous administrator via the Polaris Toolkit (`port 8082`
 * **Write Protections**: Core notes cannot be edited or deleted via API (`PermissionError`); journal entries are append-only (daily `YYYY-MM-DD.md`); core writes require explicit `allow_core=True`. From chat, Polaris's `memory_vault_query` tool is strictly read-only — the vault is written only by the distillation pipeline and the operator.
 * **Distillation Pipeline**: `/api/distill` and `/api/distill/auto` condense conversation transcripts into permanent vault knowledge; caps: 12,000 chars per note, 280-char snippets, 4,000-char embeds.
 
+---
+
+## 5. System Prompt, Tool Pipeline & Response Hygiene (North Star Primacy)
+
+### System Prompt & Persona
+* **North Star primacy (fixed precedence)**: `build_system_prompt()` renders Project North Star as Polaris's primary domain and the default subject of any ambiguous request — Miss Pi, Gotify, and the Memory Vault are supporting infrastructure, routed to only when explicitly asked or clearly relevant.
+* **Prompt blocks, in order**: persona header → **[PROJECT NORTH STAR - YOUR PRIMARY ECOSYSTEM]** (Trading Matrix with operator-owned AMM mesh + multi-hop arbitrage loops, Zero-Fiat Rule, Wallet Topology, tech stack, SCOPE primacy statement) → [REMOTE INFRASTRUCTURE - MISS PI] → [SSH REACHABILITY DOCTRINE] → [REMOTE PROCESS MANAGEMENT RULES] (incl. HONEST REPORTING) → tool schemas + **10 North Star-flavored few-shot examples** + [TOOL EXECUTION RULE] → Gotify / Memory Vault blocks → [KNOWN FACTS ABOUT {USER}] + CORE DIRECTIVES (TTS-ready, no emojis, ≤3 sentences unless asked).
+* **Context guardrail**: the prompt renders once; if it exceeds `SYSTEM_PROMPT_TOKEN_GUARD` (**6500** est. tokens), the conversation window shrinks stepwise (`WINDOW_SHRINK_STEPS = [6, 3, 0]` exchanges) and re-renders — persona, KNOWN FACTS, and directives survive, only the oldest exchanges are sacrificed (`[GUARDRAIL]` log line), keeping ~1.6k headroom under the model's 8192 `num_ctx`.
+* **Modelfile mirror**: `polaris-ai:latest` is defined by `freeroam/polaris-gateway/Modelfile` — `FROM glm-5.3-flash:cloud`, temperature 0.7, `num_ctx 8192`, carrying the same North Star primacy block in its SYSTEM text. Modelfile edits apply via `ollama create polaris-ai:latest -f <Modelfile>` — an instant manifest swap on the running Ollama container, no restart.
+
+### Server-Side Tool Pipeline & Response Stripper (identical on REST /api/chat and the WS message handler)
+* The Ollama stream is scanned for tool-call markers with a 48-char hold-back buffer (`STREAM_HOLD_BACK`); on a `{"tool": …}` marker the stream **freezes** and only the preceding prose is emitted. After the stream: parse → strip → execute via `execute_tool_call()` → broadcast `tool_execution` with the real results — only the **cleaned prose** is flushed to the stream, persisted, echoed via `chat_message`, and fed to the session window. Raw tool JSON never reaches clients, history, memory, or future-turn context.
+* **The stripper closes three leak vectors** (text cleanup only — parser/execution semantics untouched): malformed tool JSON naming a known tool (union via `_known_tool_names()`, `[DEBUG]` log evidence); legacy inline calls (`read_doc(...)`, `run_sandbox_code(...)`, …) stripped with the same shapes the parser matches; empty `json` fences + triple-newline collapse.
+* **Truthful tool-report turn**: when tools ran, a second LLM pass over the real results (large fields truncated to 1,500 chars by `_truncate_tool_results()`) produces a reporting-only follow-up — never claims success on a failure, plain text, no further tool calls; the report turn itself is stripped so it cannot recurse, the `generate_follow_up_message()` fallback is result-aware, and the turn is persisted as a third history record (`Polaris (tool report)`).
+* **HTTP `/api/chat` returns the raw Ollama envelope by design** (unstripped `response` + `thinking`) — a debug/API surface with **no rendering path**: the dashboard's fetch discards the HTTP body (chat bubbles render exclusively from `chat_message` broadcasts), and Android renders only from `GET /api/chat/history`.
+* **Cross-device chat history**: one server-side store per operator identity (200-message cap, persisted to `/data/freeroam/chat_history.json`), shared by phone and dashboard; timestamps are Z-suffixed UTC (`utc_now_iso()`) — mandatory for Android's `Instant.parse()`. Live delivery via per-IP-room `chat_message`; cross-device sync via REST polling (≤3 s). The phone's `request_history`/`chat_history` WS pair is vestigial dead code — no handler exists.
+
+### Deployment & Ops Notes
+* **Baked-source policy**: neither the gateway nor the dashboard bind-mounts source — every code change requires an image rebuild + container restart (`docker compose build polaris-gateway && docker compose up -d --no-deps polaris-gateway`). `--no-deps` guarantees linked services (`ollama`, `questdb`) are never recreated.
+* **Transcripts**: read inside the container — `docker exec polaris-gateway tail -50 /data/freeroam/operator/operator_transcripts.log` (the bind mount is root-owned, not host-readable).
+* **Pipeline evidence**: `docker logs polaris-gateway 2>&1 | grep -E 'DEBUG|Tool Execution|GUARDRAIL'` surfaces stripper, parser, and guardrail activity.
+
+*Full current gateway architecture: [`freeroam/Polaris-gateway.md`](freeroam/Polaris-gateway.md) (§3.5 prompt & persona, §3.2 tool pipeline, §7 tool registry).*
+
+---
 
 # Polaris Player Dashboard & Looking Glass Interface
 
@@ -603,4 +625,11 @@ LGI runs natively on Windows — not a compose service, no container rebuild. (F
 7. **Verify** — HUD appears top-right; MIC LED green (`listening`); POLARIS LED green within ~15 s (heartbeat); `Ctrl+Shift+S` forces an audit; say *"Polaris, what's my AMM status"* for an end-to-end voice round trip.
 
 *Reference: `LGI/LGI.md` — the complete 13-section architectural blueprint (mission, file map, runtime topology, event flows, module reference, gateway contract, configuration, operator controls, deployment, failure modes, security, extension roadmap).*
+
+*[Polaris-Gateway](Polaris-gateway.md)
+
+*[Free Roam](FreeRoam.md)
+
+![Bot r-address asset-to-asset swaps visually](Bot_wallet.png)
+![Bot r-address asset-to-asset swaps visually](Radar_both_wallets.png)
 
