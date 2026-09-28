@@ -10,7 +10,8 @@ The central intelligence and routing hub of the network.
 | Network Roles | WireGuard Tunnel Host (10.20.30.1), WebSocket Host (192.168.50.51:8765), Polaris Gateway (192.168.50.51:8082) |
 | Primary Role | Heavy compute, local state management, memory integration, burst payload receiving, and backend routing |
 
-## Executive Supervisor Client (LGI) & Command Terminal
+## Executive Supervisor Client - LGI 
+### [LGI.md](LGI.md)
 The primary floating HUD and voice cockpit for the Polaris Executive Supervisor system, which additionally hosts the high-fidelity operator console.
 | Specification | Details |
 |---|---|
@@ -21,7 +22,8 @@ The primary floating HUD and voice cockpit for the Polaris Executive Supervisor 
 | Primary Role | Native Python process providing open-mic voice chat and continuous desktop supervision. Secondary capabilities include high-fidelity WebGL rendering for the operator dashboard, manual override, and script staging sandbox. |
 
 ## FreeRoam Mobile Edge (Tactical Field Device)
-The mobile field-compute device for remote situational awareness — a fully on-device walkie-talkie loop with Polaris (on-device STT in, on-device Kokoro TTS out; only text rides the tunnel). Canonical app architecture: [FreeRoam.md](FreeRoam.md) (v3.3, field-verified Sep 26, 2026).
+### [FreeRoam.md](FreeRoam.md)
+The mobile field-compute device for remote situational awareness — a fully on-device walkie-talkie loop with Polaris (on-device STT in, on-device Kokoro TTS out; only text rides the tunnel). Canonical app architecture: (v3.3, field-verified Sep 26, 2026).
 | Specification | Details |
 |---|---|
 | Core Hardware | Red Magic 9 Pro (Android) |
@@ -183,6 +185,9 @@ To eliminate all mock data and drive the 3D canvas with live production metrics,
 
 
 # Polaris Gateway
+
+## (Polaris-gateway.md)
+
 Core Capabilities & System Connections
 Polaris Gateway serves as the centralized intelligence, communication, and system administration engine for the FreeRoam AI ecosystem running on the Dell Mainframe.
 
@@ -358,23 +363,25 @@ Identity resolves in order: explicit `user_id` in the request body (the dashboar
 The **Polaris Dashboard** (v4.3 Holodeck Split-View) is the central visual HUD and tactical command interface operating on port `7000`. It provides a real-time window into Polaris's internal logic, active task execution feeds, dual-memory vector state, and spatial perception.
 
 
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                       POLARIS DASHBOARD (Port 7000)                         │
-│                                                                             │
-│   ┌─────────────────────────────────────────────────────────────────────┐   │
-│   │                    TOP SECTION - CHAT & DIAGNOSTICS                 │   │
-│   │  - User Switcher (RICH / MATT)      - Audio TTS Toggle (Kokoro)     │   │
-│   │  - Reverse-Chronological Chat Feed   - HUD Dropdowns (Session/      │   │
-│   │  - Real-Time Message Sync (3s)        Memory/CSI Radar)             │   │
-│   └─────────────────────────────────────────────────────────────────────┘   │
-│   ─────────────────────────── RESIZABLE HANDLE ───────────────────────────  │
-│   ┌─────────────────────────────────────────────────────────────────────┐   │
-│   │                  BOTTOM SECTION - HOLODECK PANEL                    │   │
-│   │  [Collapse ▼]     [📋 TASK FEED TAB]     [🧠 MEMORY VAULT TAB]     │   │
-│   │  - Socket.IO Gateway (:8082)                  - Vault Browse/Edit   │   │
-│   │  - Live Task Lifecycle Stream                 - Hybrid Search       │   │
-│   └─────────────────────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────────────────┘
+## POLARIS DASHBOARD (Port 7000) 
+
+TOP SECTION - CHAT & DIAGNOSTICS 
+
+- User Switcher (RICH / MATT)      
+- Audio TTS Toggle (Kokoro) 
+- Reverse-Chronological Chat Feed   
+- HUD Dropdowns (Session/Memory/CSI Radar) 
+- Real-Time Message Sync (3s) 
+
+BOTTOM SECTION - INSIDE LOOK  
+
+[Collapse ▼]     [📋 TASK FEED TAB]     [🧠 MEMORY VAULT TAB]  
+
+- Socket.IO Gateway (:8082)                 
+- Vault Browse/Edit   
+- Live Task Lifecycle Stream                 
+- Hybrid Search      
+
 
 ### Gateway & Telemetry Port Binding
 | Service Endpoint | Protocol / Port | Technical Purpose |
@@ -409,14 +416,14 @@ The dashboard uses a resizable split-view layout to ensure chat interaction neve
 Operators can toggle full-width HUD overlays from the top navigation bar without interrupting active chat sessions:
 
 
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                            DIAGNOSTIC HUD OVERLAYS                          │
-├───────────────────────┬─────────────────────────────┬───────────────────────┤
+
+DIAGNOSTIC HUD OVERLAYS
+
 │  SESSION DIAGNOSTICS  │     MEMORY ARCHITECTURE     │    CSI SPATIAL RADAR  │
 │ - Active session time │  - SQLite (Messages/Rules)  │ - 350x350 Canvas Grid │
 │ - Sliding window time │  - ChromaDB Vector Counts   │ - Motion Velocity/X,Y │
 │ - Gateway latency     │  - Ops/Sec Delta Counters   │ - Multi-Sensor Fusion │
-└───────────────────────┴─────────────────────────────┴───────────────────────┘
+
 
 ### Memory Architecture Dropdown
 Inspects Polaris's dual-tier brain structure in real time:
@@ -435,6 +442,8 @@ Key Features Summary
 
 # Looking Glass Interface (LGI) Executive Supervisor Client
 
+## (LGI.md)
+
 The **Looking Glass Interface (LGI)** is the operator's floating HUD and voice cockpit for the Polaris Executive Supervisor system. Unlike the browser-based Polaris Dashboard (`:7000`), LGI is a **native Python process running on the Alienware X17** — deliberately *not* containerized, because it requires raw hardware access: open-mic capture, webcam, screen capture, NVIDIA CUDA, and a frameless always-on-top Qt overlay. It talks **text/JSON only** over the LAN — chat/audit traffic to the Polaris Gateway (`http://192.168.50.51:8082`), spatial telemetry to the Burst Receiver (`:8083`, Socket.IO), and webcam-analyze vision passes to the Mainframe's Ollama (`:11434`). Codebase: 10 source files (9 Python + requirements), 2,663 Python lines in the `LGI/` folder, fully self-documented in its own `LGI.md` blueprint (13 sections, v1.2 "Her Seeing Me" — re-verified against the code Sep 27, 2026) that travels with the deployment.
 
 ## 1. Mission Capabilities
@@ -446,29 +455,30 @@ The **Looking Glass Interface (LGI)** is the operator's floating HUD and voice c
 
 ## 2. Runtime Topology
 
-+------------------------- Alienware X17 (192.168.50.227) -------------------+
-|  lgi.py  (LGIApp — Qt main thread + 100 ms drain QTimer)                   |
-|    |                                                                       |
-|    +-- hud_ui.py             frameless always-on-top HUD                   |
-|    |                         (MIC/CAM/SUP/POL LEDs, exchange, alert banner)  |
-|    +-- audio_stt.py          open-mic VAD + faster-whisper     [daemon]    |
-|    +-- audio_tts.py          Kokoro TTS 24 kHz, sounddevice    [daemon]    |
-|    +-- vision_supervisor.py  screen/webcam/clipboard audits    [daemon]    |
-|    +-- screen_capture.py     rolling DXcam dashcam -> JPEGs   [dxcam]      |
-|    +-- webcam_perception.py  tracking + gestures + attention   [daemon]    |
-|    +-- local_vlm.py          webcam-analyze turns -> Ollama (b64 JPEG)     |
-|    +-- gateway_client.py     thread-safe HTTP client (JSON only)           |
-|    +-- heartbeat             GET status every 15 s            [daemon]     |
-|    +-- global hotkeys        keyboard lib -> command queue     [daemon]    |
-+----------------------------- text/JSON only | LAN -------------------------+
-                                              v
-                          Polaris Mainframe gateway :8082
-                          POST /api/chat              -> Ollama LLM (vision: multimodal ladder)
-                          POST /api/supervisor/audit -> triage + vault
-                          GET  /api/supervisor/status -> liveness
+Alienware X17 (192.168.50.227)
+lgi.py  (LGIApp — Qt main thread + 100 ms drain QTimer) 
 
-                          SpatialReporter socketio    -> Burst Receiver :8083
-                          vision_frame @ 2 Hz + radar_motion @ 1 Hz (radar room)
++-- hud_ui.py             frameless always-on-top HUD
+                       (MIC/CAM/SUP/POL LEDs, exchange, alert banner)
+|+-- audio_stt.py         | open-mic VAD + faster-whisper     [daemon]    |
+|+-- audio_tts.py         | Kokoro TTS 24 kHz, sounddevice    [daemon]    |
+|+-- vision_supervisor.py | screen/webcam/clipboard audits    [daemon]    |
+|+-- screen_capture.py    | rolling DXcam dashcam -> JPEGs   [dxcam]      |
+|+-- webcam_perception.py | tracking + gestures + attention   [daemon]    |
+|+-- local_vlm.py         | webcam-analyze turns -> Ollama (b64 JPEG)     |
+|+-- gateway_client.py    | thread-safe HTTP client (JSON only)           |
+|+-- heartbeat            | GET status every 15 s            [daemon]     |
+|+-- global hotkeys       | keyboard lib -> command queue     [daemon]    |
+|+-- text/JSON only       | LAN    |
+
+▼
+
+Polaris Mainframe gateway :8082
+POST /api/chat -> Ollama LLM (vision: multimodal ladder)
+POST /api/supervisor/audit -> triage + vault
+GET  /api/supervisor/status -> liveness
+SpatialReporter socketio    -> Burst Receiver :8083
+vision_frame @ 2 Hz + radar_motion @ 1 Hz (radar room)
 
 * **Qt single-thread rule**: daemon workers never touch Qt widgets. They push events onto queues (`status_q`, `command_q`, `stt_q`, `chat_q`, `supervisor_q`); a 100 ms `QTimer` drain is the *only* worker→HUD path (bounded ~100 ms UI latency, zero cross-thread Qt calls).
 * **Never raise across threads**: every worker converts failures into result dicts and guarded callbacks; exceptions never propagate into the Qt loop.
@@ -517,4 +527,3 @@ LGI runs natively on Windows — not a compose service, no container rebuild. (F
 6. **Run** — `python lgi.py` (optionally set `LGI_*` env vars first).
 7. **Verify** — HUD appears top-right; MIC LED green (`listening`); POLARIS LED green within ~15 s (heartbeat); `Ctrl+Shift+S` forces an audit; say *"Polaris, what's my AMM status"* for an end-to-end voice round trip. For v1.2: CAM LED green with the radar room showing the `x17-webcam` device, say *"Polaris, analyze this component"* for a spoken camera description, and open the trading dashboard + say *"Polaris, tell me what data is missing from the top navigation bar"* for a desktop-vision turn.
 
-*Reference: `LGI/LGI.md` — the complete 13-section architectural blueprint, v1.2 "Her Seeing Me" (mission, file map, runtime topology, event flows, module reference, gateway contract, configuration, operator controls, deployment, failure modes, security, extension roadmap); line counts, thread/queue inventory, and payload contracts re-verified against the code Sep 27, 2026.*
