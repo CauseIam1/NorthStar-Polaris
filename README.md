@@ -222,27 +222,30 @@ The **Polaris Gateway** is a multi-service Python container operating on the Del
 
 POLARIS GATEWAY CONTAINER 
 
-## Main Polaris Gateway (Flask+IO)  
-Host 8082 → internal 5000      
-- Ollama LLM: polaris-ai:latest   
-→ glm-5.3-flash (cloud, 8192 ctx) 
-- SQLite + ChromaDB + Memory Vault 
-- Kokoro TTS (/api/tts*)        
-- Vault REST (/api/memory/vault/*)
-- Distill (/api/distill*)    
-- Supervisor audit (/api/superv.) 
-                      ▼           
-
-## Burst Receiver (Socket.IO) 
-Host 8083 → internal 5001 
-- Telemetry Logs / Spatial Ingest 
-- CSI Radar (radar/vision_update) 
-
-## Sandbox Gateway 
-Port 7007     
-Remote SSH Exec 
-MissPi Control 
-
+```
+┌───────────────────────────────────────────────────────────────────────┐
+│                          POLARIS GATEWAY CONTAINER                    │
+│                                                                       │
+│   ┌────────────────────────────────────┐   ┌─────────────────────┐    │
+│   │  Main Polaris Gateway (Flask+IO)   │   │  Sandbox Gateway    │    │
+│   │  Host 8082 → internal 5000         │   │  Port 7007          │    │
+│   │  - Ollama LLM: polaris-ai:latest   │   │  - Remote SSH Exec  │    │
+│   │    → glm-5.3-flash (cloud, 1M ctx) │   │  - MissPi Control   │    │
+│   │ - SQLite + ChromaDB + Memory Vault │   └──────────┬──────────┘    │
+│   │  - Kokoro TTS (/api/tts*)          │              │               │
+│   │ - Vault REST (/api/memory/vault/*) │              │               │
+│   │  - Distill (/api/distill*)         │              │               │
+│   │  - Supervisor audit (/api/superv.) │              │               │
+│   └──────────────────┬─────────────────┘              │               │
+│                      ▼                                │               │
+│   ┌────────────────────────────────────┐              │               │
+│   │  Burst Receiver (Socket.IO)        │              │               │
+│   │  Host 8083 → internal 5001         │              │               │
+│   │  - Telemetry Logs / Spatial Ingest │              │               │
+│   │  - CSI Radar (radar/vision_update) │              │               │
+│   └────────────────────────────────────┘              │               │
+└───────────────────────────────────────────────────────────────────────┘
+```
 
 ### Port Allocation Summary
 
@@ -258,23 +261,30 @@ MissPi Control
 
 Polaris tracks environment geometry and target positioning through a high-precision, multi-sensor fusion pipeline optimized for the quiet schoolhouse environment.
 
-ESP32 mmWave Nodes 
-
-(POE + RD03 Module) 
-
-▼ 
-
-POLARIS BURST RECEIVER (Host 8083 → internal 5001)
-1. Subcarrier Weight Analysis (X/Y/Z Coordinate Calculation)
-2. mmWave Micro-Doppler Motion Triangulation
-3. Vision Bounding-Box Spatial Alignment (Fingertip Precision)
-4. Broadcast radar_update events via WebSocket
-
-   
-### Sensor Network Topology
-* **Dedicated mmWave Nodes**: Two POE ESP32 units fitted with RD03 mmWave radar modules and directional antennas positioned for fixed-room boundary coverage.
-* **MissPi Multi-Modal Hub (`192.168.50.179`)**: Raspberry Pi 5 unit combining a third POE ESP32 RD03 mmWave radar module, raw WiFi CSI amplitude array collection, and an optical camera feed processing YOLO object tracking.
-* **Spatial Fusion Engine**: The burst receiver (host 8083 → internal 5001) parses CSI subcarrier deltas, micro-Doppler radar frequencies, and YOLO optical vectors to train coordinate models down to individual fingertip positioning in low-noise conditions.
+```
+┌───────────────────────┐         ┌───────────────────────┐
+│  ESP32 mmWave Node 1  │         │  ESP32 mmWave Node 2  │
+│  (POE + RD03 Module)  │         │  (POE + RD03 Module)  │
+└───────────┬───────────┘         └───────────┬───────────┘
+            │                                 │
+            └────────────────┐ ┌──────────────┘
+▼ ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                     MissPi (RPi 5 Edge Hub)                             │
+│  - 1x Integrated POE ESP32 RD03 mmWave Radar                            │
+│  - WiFi Channel State Information (CSI) Amplitude Stream                │
+│  - Camera Module running YOLO Real-Time Object Detection                │
+└────────────────────────────────────┬────────────────────────────────────┘
+│ Spatial Data Ingest
+▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│         POLARIS BURST RECEIVER (Host 8083 → internal 5001)              │
+│  1. Subcarrier Weight Analysis (X/Y/Z Coordinate Calculation)           │
+│  2. mmWave Micro-Doppler Motion Triangulation                           │
+│  3. Vision Bounding-Box Spatial Alignment (Fingertip Precision)         │
+│  4. Broadcast radar_update events via WebSocket                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
@@ -282,7 +292,7 @@ POLARIS BURST RECEIVER (Host 8083 → internal 5001)
 
 Polaris maintains full situational awareness when the operator is out in the field, utilizing encrypted network tunneling and a fully on-device audio pipeline — voice capture (STT) and spoken replies (TTS) both run locally on the field device, so only text rides the WireGuard tunnel.
 
-
+```
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                     FIELD OPERATOR (Mobile / Road)                      │
 │  ┌───────────────────────────────────────────────────────────────────┐  │
@@ -299,7 +309,7 @@ Polaris maintains full situational awareness when the operator is out in the fie
 │  - text in -> Ollama LLM -> text reply (STT + TTS on-device)            │
 │  - Push notifications routed via Gotify Service                         │
 └─────────────────────────────────────────────────────────────────────────┘
-
+```
 ### Field Communications Protocol
 * **WireGuard Secure Tunnel**: All remote traffic from the Red Magic 9 Pro routes back to the mainframe host (`10.20.30.1`), ensuring an encrypted connection for data ingestion and API access.
 * **Garmin Watch Push-to-Talk (v3.3)**: The FreeRoam app holds an always-on paused AVRCP MediaSession from launch (the "tether"), so the Garmin's hardware media buttons drive the app with the screen locked — PLAY/PAUSE toggles push-to-talk (first press starts capture, second stops and auto-sends), STOP cancels a live capture or halts tethered playback, and BACK/NEXT are disabled. The watch marquee-scrolls Polaris's latest reply as the track title. Field-verified end-to-end on the operator's watch, Sep 26, 2026.
@@ -365,23 +375,28 @@ The **Polaris Dashboard** (v4.3 Holodeck Split-View) is the central visual HUD a
 
 ## POLARIS DASHBOARD (Port 7000) 
 
-TOP SECTION - CHAT & DIAGNOSTICS 
+### [Polaris-dashboard.md](Polaris-dashboard.md)
 
-- User Switcher (RICH / MATT)      
-- Audio TTS Toggle (Kokoro) 
-- Reverse-Chronological Chat Feed   
-- HUD Dropdowns (Session/Memory/CSI Radar) 
-- Real-Time Message Sync (3s) 
 
-BOTTOM SECTION - INSIDE LOOK  
-
-[Collapse ▼]     [📋 TASK FEED TAB]     [🧠 MEMORY VAULT TAB]  
-
-- Socket.IO Gateway (:8082)                 
-- Vault Browse/Edit   
-- Live Task Lifecycle Stream                 
-- Hybrid Search      
-
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                       POLARIS DASHBOARD (Port 7000)                         │
+│                                                                             │
+│   ┌─────────────────────────────────────────────────────────────────────┐   │
+│   │                    TOP SECTION - CHAT & DIAGNOSTICS                 │   │
+│   │  - User Switcher (RICH / MATT)      - Audio TTS Toggle (Kokoro)     │   │
+│   │  - Reverse-Chronological Chat Feed   - HUD Dropdowns (Session/      │   │
+│   │  - Real-Time Message Sync (3s)        Memory/CSI Radar)             │   │
+│   └─────────────────────────────────────────────────────────────────────┘   │
+│   ─────────────────────────── RESIZABLE HANDLE ───────────────────────────  │
+│   ┌─────────────────────────────────────────────────────────────────────┐   │
+│   │                  BOTTOM SECTION - HOLODECK PANEL                    │   │
+│   │  [Collapse ▼]     [📋 TASK FEED TAB]     [🧠 MEMORY VAULT TAB]     │   │
+│   │  - Socket.IO Gateway (:8082)                  - Vault Browse/Edit   │   │
+│   │  - Live Task Lifecycle Stream                 - Hybrid Search       │   │
+│   └─────────────────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
 
 ### Gateway & Telemetry Port Binding
 | Service Endpoint | Protocol / Port | Technical Purpose |
@@ -417,13 +432,18 @@ Operators can toggle full-width HUD overlays from the top navigation bar without
 
 
 
-DIAGNOSTIC HUD OVERLAYS
+### DIAGNOSTIC HUD OVERLAYS
 
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                            DIAGNOSTIC HUD OVERLAYS                          │
+├───────────────────────┬─────────────────────────────┬───────────────────────┤
 │  SESSION DIAGNOSTICS  │     MEMORY ARCHITECTURE     │    CSI SPATIAL RADAR  │
 │ - Active session time │  - SQLite (Messages/Rules)  │ - 350x350 Canvas Grid │
 │ - Sliding window time │  - ChromaDB Vector Counts   │ - Motion Velocity/X,Y │
 │ - Gateway latency     │  - Ops/Sec Delta Counters   │ - Multi-Sensor Fusion │
-
+└───────────────────────┴─────────────────────────────┴───────────────────────┘
+```
 
 ### Memory Architecture Dropdown
 Inspects Polaris's dual-tier brain structure in real time:
@@ -442,7 +462,7 @@ Key Features Summary
 
 # Looking Glass Interface (LGI) Executive Supervisor Client
 
-## (LGI.md)
+### [LGI.md](LGI.md)
 
 The **Looking Glass Interface (LGI)** is the operator's floating HUD and voice cockpit for the Polaris Executive Supervisor system. Unlike the browser-based Polaris Dashboard (`:7000`), LGI is a **native Python process running on the Alienware X17** — deliberately *not* containerized, because it requires raw hardware access: open-mic capture, webcam, screen capture, NVIDIA CUDA, and a frameless always-on-top Qt overlay. It talks **text/JSON only** over the LAN — chat/audit traffic to the Polaris Gateway (`http://192.168.50.51:8082`), spatial telemetry to the Burst Receiver (`:8083`, Socket.IO), and webcam-analyze vision passes to the Mainframe's Ollama (`:11434`). Codebase: 10 source files (9 Python + requirements), 2,663 Python lines in the `LGI/` folder, fully self-documented in its own `LGI.md` blueprint (13 sections, v1.2 "Her Seeing Me" — re-verified against the code Sep 27, 2026) that travels with the deployment.
 
@@ -454,31 +474,25 @@ The **Looking Glass Interface (LGI)** is the operator's floating HUD and voice c
 * **Ambient awareness with privacy**: all other speech is transcribed locally (faster-whisper) and shown as an ambient transcript line, but is **never sent to the network**.
 
 ## 2. Runtime Topology
-
-Alienware X17 (192.168.50.227)
-lgi.py  (LGIApp — Qt main thread + 100 ms drain QTimer) 
-
-+-- hud_ui.py             frameless always-on-top HUD
-                       (MIC/CAM/SUP/POL LEDs, exchange, alert banner)
-|+-- audio_stt.py         | open-mic VAD + faster-whisper     [daemon]    |
-|+-- audio_tts.py         | Kokoro TTS 24 kHz, sounddevice    [daemon]    |
-|+-- vision_supervisor.py | screen/webcam/clipboard audits    [daemon]    |
-|+-- screen_capture.py    | rolling DXcam dashcam -> JPEGs   [dxcam]      |
-|+-- webcam_perception.py | tracking + gestures + attention   [daemon]    |
-|+-- local_vlm.py         | webcam-analyze turns -> Ollama (b64 JPEG)     |
-|+-- gateway_client.py    | thread-safe HTTP client (JSON only)           |
-|+-- heartbeat            | GET status every 15 s            [daemon]     |
-|+-- global hotkeys       | keyboard lib -> command queue     [daemon]    |
-|+-- text/JSON only       | LAN    |
-
-▼
-
-Polaris Mainframe gateway :8082
-POST /api/chat -> Ollama LLM (vision: multimodal ladder)
-POST /api/supervisor/audit -> triage + vault
-GET  /api/supervisor/status -> liveness
-SpatialReporter socketio    -> Burst Receiver :8083
-vision_frame @ 2 Hz + radar_motion @ 1 Hz (radar room)
+```
++------------------------- Alienware X17 (192.168.50.227) -------------------+
+|  lgi.py  (LGIApp — Qt main thread + 100 ms drain QTimer)                   |
+|    |                                                                       |
+|    +-- hud_ui.py             frameless always-on-top HUD                   |
+|    |                         (MIC/SUP/POL LEDs, exchange, alert banner)    |
+|    +-- audio_stt.py          open-mic VAD + faster-whisper     [daemon]    |
+|    +-- audio_tts.py          Kokoro TTS 24 kHz, sounddevice    [daemon]    |
+|    +-- vision_supervisor.py  screen/webcam/clipboard audits    [daemon]    |
+|    +-- gateway_client.py     thread-safe HTTP client (JSON only)           |
+|    +-- heartbeat             GET status every 15 s            [daemon]     |
+|    +-- global hotkeys        keyboard lib -> command queue     [daemon]    |
++----------------------------- text/JSON only | LAN -------------------------+
+                                              v
+                          Polaris Mainframe gateway :8082
+                          POST /api/chat              -> Ollama LLM
+                          POST /api/supervisor/audit -> triage + vault
+                          GET  /api/supervisor/status -> liveness
+```
 
 * **Qt single-thread rule**: daemon workers never touch Qt widgets. They push events onto queues (`status_q`, `command_q`, `stt_q`, `chat_q`, `supervisor_q`); a 100 ms `QTimer` drain is the *only* worker→HUD path (bounded ~100 ms UI latency, zero cross-thread Qt calls).
 * **Never raise across threads**: every worker converts failures into result dicts and guarded callbacks; exceptions never propagate into the Qt loop.
