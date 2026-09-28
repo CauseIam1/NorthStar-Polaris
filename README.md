@@ -23,14 +23,14 @@ The primary floating HUD and voice cockpit for the Polaris Executive Supervisor 
 
 ## FreeRoam Mobile Edge (Tactical Field Device)
 ### [FreeRoam.md](FreeRoam.md)
-The mobile field-compute device for remote situational awareness — a fully on-device walkie-talkie loop with Polaris (on-device STT in, on-device Kokoro TTS out; only text rides the tunnel). Canonical app architecture: (v3.3, field-verified Sep 26, 2026).
+The mobile field-compute device for remote situational awareness — a fully on-device walkie-talkie loop with Polaris (on-device STT in, on-device Kokoro TTS out; only text rides the tunnel). Since v3.5/v3.6 the loop is a streaming conversation: her reply speaks sentence-by-sentence while it generates (speak-while-she-writes, first words ~2-4 s), and playback is fully text-only — no audio artifacts exist anywhere; bubble replay re-synthesizes from text. Canonical app architecture: (v3.6, deployed Sep 28, 2026).
 | Specification | Details |
 |---|---|
 | Core Hardware | Red Magic 9 Pro (Android) |
-| Wearable Triggers | Garmin watch media buttons over the always-on AVRCP MediaSession tether — PLAY/PAUSE = push-to-talk toggle, STOP = cancel capture / halt playback, BACK/NEXT disabled (works screen-locked) |
+| Wearable Triggers | Garmin watch media buttons over the always-on AVRCP MediaSession tether — PLAY/PAUSE = push-to-talk toggle, STOP = cancel capture / halt playback, BACK/NEXT disabled (works screen-locked). A silent 60 s seed rests paused while idle (PLAY ready for push-to-talk), loops silently while she speaks (the pause affordance stops her speech and starts the mic), and her full reply takes the track title with a fresh mediaId as she drains — the watch ends every exchange showing her reply and a PLAY button |
 | Audio Output | Bose Ultra Open Earbuds |
-| Local AI Models | Android SpeechRecognizer STT (on-device engine preferred) + Kokoro-82M TTS via sherpa-onnx (fully on-device, no cloud TTS) |
-| Primary Role | Live comms with Polaris (screen-locked Garmin watch push-to-talk), WireGuard tunneling, and burst transmission to the Dell Mainframe |
+| Local AI Models | Android SpeechRecognizer STT (on-device engine preferred; 2.5 s end-of-speech patience — segment continuation keeps the mic hot through mid-sentence pauses) + Kokoro-82M TTS via sherpa-onnx (fully on-device, no cloud TTS; bf_emma default voice, streamed PCM straight into a persistent 24 kHz AudioTrack — text-only, no WAV artifacts) |
+| Primary Role | Live comms with Polaris (screen-locked Garmin watch push-to-talk; playback survives screen-lock), WireGuard tunneling, and burst transmission to the Dell Mainframe |
 
 # Project North Star - Trading Bot & Holodeck Dashboard
 **Document Status: PRODUCTION ACTIVE**
@@ -186,7 +186,7 @@ To eliminate all mock data and drive the 3D canvas with live production metrics,
 
 # Polaris Gateway
 
-### [Polaris-gateway.md](Polaris-gateway.md)
+### [Polaris-gateway.md](freeroam/Polaris-gateway.md)
 
 Core Capabilities & System Connections
 Polaris Gateway serves as the centralized intelligence, communication, and system administration engine for the FreeRoam AI ecosystem running on the Dell Mainframe.
@@ -209,7 +209,7 @@ Active AI Tools & Autonomous Schemas (exactly 15 tools routed by the execute_too
 Connected Hardware & Infrastructure
  * Dell Mainframe (192.168.50.51): Host server running Docker container instances, Ollama LLM (11434), QuestDB (8812), and WireGuard host (10.20.30.1).
  * Alienware X17 Laptop: Operator command console rendering North Star Holodeck 3D dashboards; hosts the LGI Executive Supervisor Client (native HUD/voice/vision cockpit over the gateway on :8082, with spatial telemetry to the Burst Receiver on :8083).
- * Red Magic 9 Pro: Tactical field device running the FreeRoam Android app (v3.3, field-verified Sep 26, 2026) — Bose Ultra Open Earbuds coms, Even G2 Smart Glasses with ring, and Garmin watch push-to-talk over the always-on AVRCP MediaSession tether.
+ * Red Magic 9 Pro: Tactical field device running the FreeRoam Android app (v3.6 streaming voice comms, deployed Sep 28, 2026) — Bose Ultra Open Earbuds coms, Even G2 Smart Glasses with ring, and Garmin watch push-to-talk over the always-on AVRCP MediaSession keep-alive tether.
  * MissPi / Mini Pi (192.168.50.179): Remote Raspberry Pi 5 edge compute unit.
 
 # Polaris Gateway & Cross-Device Communications
@@ -312,8 +312,8 @@ Polaris maintains full situational awareness when the operator is out in the fie
 ```
 ### Field Communications Protocol
 * **WireGuard Secure Tunnel**: All remote traffic from the Red Magic 9 Pro routes back to the mainframe host (`10.20.30.1`), ensuring an encrypted connection for data ingestion and API access.
-* **Garmin Watch Push-to-Talk (v3.3)**: The FreeRoam app holds an always-on paused AVRCP MediaSession from launch (the "tether"), so the Garmin's hardware media buttons drive the app with the screen locked — PLAY/PAUSE toggles push-to-talk (first press starts capture, second stops and auto-sends), STOP cancels a live capture or halts tethered playback, and BACK/NEXT are disabled. The watch marquee-scrolls Polaris's latest reply as the track title. Field-verified end-to-end on the operator's watch, Sep 26, 2026.
-* **Hands-Free Audio (On-Device TTS)**: Every spoken reply is synthesized fully on-device by the FreeRoam app's Kokoro-82M engine (sherpa-onnx, 24 kHz mono PCM16, WAV cache) and plays through the operator's Bose Ultra Open Earbuds — no cloud TTS, no server-side audio round-trips; the gateway exchanges plain text only (v2.9 hardening).
+* **Garmin Watch Push-to-Talk (v3.3; play-state model v3.5.2)**: The FreeRoam app's AVRCP MediaSession stays listed around a silent 60 s seed track with an honest play-state model: PAUSED at launch and idle (the watch shows PLAY, ready for push-to-talk), PLAYING only while she speaks (the watch's pause affordance stops her speech and starts the mic — both PLAY and PAUSE route to the PTT toggle), and PAUSED again the moment her voice drains. The hardware media buttons drive the app with the screen locked — PLAY/PAUSE toggles push-to-talk (first press starts capture, second stops and auto-sends; 2.5 s end-of-speech patience means mid-sentence pauses no longer send early), STOP cancels a live capture or halts tethered playback, and BACK/NEXT are disabled. Every retitle stamps a fresh mediaId — a "new track" the Garmin reliably refreshes — so her full reply marquee-scrolls as the track title and sticks until the next exchange. Field-verified end-to-end on the operator's watch, Sep 26, 2026; play-state model deployed Sep 28, 2026.
+* **Hands-Free Streaming Audio (On-Device TTS, v3.5/v3.6)**: Her replies speak sentence-by-sentence WHILE they generate — the gateway's `chat_stream` deltas feed an on-device pipeline (sentence segmentation → Kokoro synthesis on a dedicated executor → gapless PCM into a persistent 24 kHz AudioTrack), so the first words land ~2-4 s after the prompt. Playback is fully text-only (v3.6): no WAV artifacts are ever written, bubble replay re-synthesizes from text (tap speaks, tap again stops), and an idempotent startup sweep keeps the legacy WAV cache at zero. Fully on-device through the operator's Bose Ultra Open Earbuds — no cloud TTS, no server-side audio round-trips; the gateway exchanges plain text only (v2.9 hardening).
 * **Even G2 Smart Glasses Capture**: Tap-to-speak voice capture on Even G2 smart glasses feeds the FreeRoam app's local air-gapped pipeline; the recognized text travels over WireGuard to Polaris, which logs both operator dialogue and system responses, maintaining session state across all road interactions.
 
 ---
@@ -347,13 +347,14 @@ Identity resolves in order: explicit `user_id` in the request body (the dashboar
 ### System Prompt & Persona
 * **North Star primacy (fixed precedence)**: `build_system_prompt()` renders Project North Star as Polaris's primary domain and the default subject of any ambiguous request — Miss Pi, Gotify, and the Memory Vault are supporting infrastructure, routed to only when explicitly asked or clearly relevant.
 * **Prompt blocks, in order**: persona header → **[PROJECT NORTH STAR - YOUR PRIMARY ECOSYSTEM]** (Trading Matrix with operator-owned AMM mesh + multi-hop arbitrage loops, Zero-Fiat Rule, Wallet Topology, tech stack, SCOPE primacy statement) → [REMOTE INFRASTRUCTURE - MISS PI] → [SSH REACHABILITY DOCTRINE] → [REMOTE PROCESS MANAGEMENT RULES] (incl. HONEST REPORTING) → tool schemas + **10 North Star-flavored few-shot examples** + [TOOL EXECUTION RULE] → Gotify / Memory Vault blocks → [KNOWN FACTS ABOUT {USER}] + CORE DIRECTIVES (TTS-ready, no emojis, ≤3 sentences unless asked).
-* **Context guardrail**: the prompt renders once; if it exceeds `SYSTEM_PROMPT_TOKEN_GUARD` (**6500** est. tokens), the conversation window shrinks stepwise (`WINDOW_SHRINK_STEPS = [6, 3, 0]` exchanges) and re-renders — persona, KNOWN FACTS, and directives survive, only the oldest exchanges are sacrificed (`[GUARDRAIL]` log line), keeping ~1.6k headroom under the model's 8192 `num_ctx`.
-* **Modelfile mirror**: `polaris-ai:latest` is defined by `freeroam/polaris-gateway/Modelfile` — `FROM glm-5.3-flash:cloud`, temperature 0.7, `num_ctx 8192`, carrying the same North Star primacy block in its SYSTEM text. Modelfile edits apply via `ollama create polaris-ai:latest -f <Modelfile>` — an instant manifest swap on the running Ollama container, no restart.
+* **Context guardrail**: the prompt renders once; if it exceeds `SYSTEM_PROMPT_TOKEN_GUARD` (**6500** est. tokens), the conversation window shrinks stepwise (`WINDOW_SHRINK_STEPS = [6, 3, 0]` exchanges) and re-renders — persona, KNOWN FACTS, and directives survive, only the oldest exchanges are sacrificed (`[GUARDRAIL]` log line). The guard stays deliberately conservative under the model's 32768 `num_ctx` (v3.4, raised from 8192): the extra headroom is reserved for tool-result document pages plus the user turn, reply, and thinking — not for history bloat.
+* **Modelfile mirror**: `polaris-ai:latest` is defined by `freeroam/polaris-gateway/Modelfile` — `FROM glm-5.3-flash:cloud`, temperature 0.7, `num_ctx 32768` (v3.4), carrying the same North Star primacy block in its SYSTEM text. Modelfile edits apply via `ollama create polaris-ai:latest -f <Modelfile>` — an instant manifest swap on the running Ollama container, no restart.
 
 ### Server-Side Tool Pipeline & Response Stripper (identical on REST /api/chat and the WS message handler)
 * The Ollama stream is scanned for tool-call markers with a 48-char hold-back buffer (`STREAM_HOLD_BACK`); on a `{"tool": …}` marker the stream **freezes** and only the preceding prose is emitted. After the stream: parse → strip → execute via `execute_tool_call()` → broadcast `tool_execution` with the real results — only the **cleaned prose** is flushed to the stream, persisted, echoed via `chat_message`, and fed to the session window. Raw tool JSON never reaches clients, history, memory, or future-turn context.
 * **The stripper closes three leak vectors** (text cleanup only — parser/execution semantics untouched): malformed tool JSON naming a known tool (union via `_known_tool_names()`, `[DEBUG]` log evidence); legacy inline calls (`read_doc(...)`, `run_sandbox_code(...)`, …) stripped with the same shapes the parser matches; empty `json` fences + triple-newline collapse.
-* **Truthful tool-report turn**: when tools ran, a second LLM pass over the real results (large fields truncated to 1,500 chars by `_truncate_tool_results()`) produces a reporting-only follow-up — never claims success on a failure, plain text, no further tool calls; the report turn itself is stripped so it cannot recurse, the `generate_follow_up_message()` fallback is result-aware, and the turn is persisted as a third history record (`Polaris (tool report)`).
+* **Truthful tool-report turn**: when tools ran, a second LLM pass over the real results (large fields truncated to 1,500 chars by `_truncate_tool_results()` — document `content` alone carries an 8,000-char budget, matching `read_doc`'s hard page cap) produces a reporting-only follow-up — never claims success on a failure, plain text, no further tool calls; the report turn itself is stripped so it cannot recurse, the `generate_follow_up_message()` fallback is result-aware, and the turn is persisted as a third history record (`Polaris (tool report)`).
+* **Paged document access (v3.4)**: `read_doc` is offset-based — up to 8,000 chars per page with `has_more` / `next_offset` navigation — so she walks large vault files (the bind-mounted `northstar.md` and `Polaris-gateway.md` are her authoritative read-only mirrors) across conversational turns instead of receiving a 1,500-char sliver.
 * **HTTP `/api/chat` returns the raw Ollama envelope by design** (unstripped `response` + `thinking`) — a debug/API surface with **no rendering path**: the dashboard's fetch discards the HTTP body (chat bubbles render exclusively from `chat_message` broadcasts), and Android renders only from `GET /api/chat/history`.
 * **Cross-device chat history**: one server-side store per operator identity (200-message cap, persisted to `/data/freeroam/chat_history.json`), shared by phone and dashboard; timestamps are Z-suffixed UTC (`utc_now_iso()`) — mandatory for Android's `Instant.parse()`. Live delivery via per-IP-room `chat_message`; cross-device sync via REST polling (≤3 s). The phone's `request_history`/`chat_history` WS pair is vestigial dead code — no handler exists.
 
@@ -529,15 +530,3 @@ The **Looking Glass Interface (LGI)** is the operator's floating HUD and voice c
 * **Webcam-analyze frames**: one 640px q50 JPEG per camera-directed turn goes to the configured Ollama endpoint (default the Mainframe's cloud-proxied `polaris-ai:latest`; point `LGI_VLM_URL` at a local Ollama to keep analyze frames fully on-device).
 * **Sensor minimisation**: `LGI_SCREENSHOT=0` / `LGI_WEBCAM=0` strip images from audits entirely.
 * Clipboard is change-gated: stale contents are never re-sent.
-
-## 5. X17 Deployment Runbook
-
-LGI runs natively on Windows — not a compose service, no container rebuild. (Full detail: `LGI/LGI.md` §10.)
-1. **Sync** the `LGI/` folder to the X17 (e.g. `scp -r LGI rich@192.168.50.227:C:/LGI`).
-2. **eSpeak NG** — install to `C:\Program Files\eSpeak NG\` (Kokoro phonemizer prerequisite; LGI sets the env vars automatically at import).
-3. **CUDA torch** — `pip install torch --index-url https://download.pytorch.org/whl/cu121`.
-4. **PyAudio** — `pip install pyaudio`; wheel fallback: `pip install pipwin` then `pipwin install pyaudio`.
-5. **Dependencies** — `pip install -r requirements.txt` (v1.2 adds `dxcam` for the vision dashcam, `mediapipe` + `ultralytics` — YOLOv8n weights auto-download on first run — and `python-socketio[client]`; for OCR context install the Tesseract OCR engine, UB-Mannheim build, added to PATH).
-6. **Run** — `python lgi.py` (optionally set `LGI_*` env vars first).
-7. **Verify** — HUD appears top-right; MIC LED green (`listening`); POLARIS LED green within ~15 s (heartbeat); `Ctrl+Shift+S` forces an audit; say *"Polaris, what's my AMM status"* for an end-to-end voice round trip. For v1.2: CAM LED green with the radar room showing the `x17-webcam` device, say *"Polaris, analyze this component"* for a spoken camera description, and open the trading dashboard + say *"Polaris, tell me what data is missing from the top navigation bar"* for a desktop-vision turn.
-
