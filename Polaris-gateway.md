@@ -10,7 +10,7 @@ Polaris is the private AI assistant and system hub running on the Dell Mainframe
 
 | Component | Container | Role |
 |---|---|---|
-| **Polaris Gateway** | `polaris-gateway` | One container, three Flask services: Chat Gateway (AI chat, tool calling, memory, voice), Burst Receiver (telemetry, CSI radar, vision stream), Sandbox Gateway (Mini Pi SSH console) |
+| **Polaris Gateway** | `polaris-gateway` | One container, three Flask services: Chat Gateway (AI chat, tool calling, memory, voice, desktop-vision turns), Burst Receiver (telemetry, CSI radar, vision stream), Sandbox Gateway (Mini Pi SSH console) |
 | **Polaris Dashboard** | `polaris-dashboard` | Static nginx page (`Polaris_page.html`) serving the Holodeck split-view chat UI |
 | Ollama | `ollama` | Local LLM inference — `polaris-ai:latest` (chat), `nomic-embed-text` (embeddings) |
 | Gotify | `gotify` | Push notification delivery (consumed by the AI as a tool) |
@@ -20,7 +20,7 @@ Polaris is the private AI assistant and system hub running on the Dell Mainframe
 
 **Operator identity** is resolved in order: explicit `user_id` in the request body (the dashboard sends `rich`/`matt` on the user's behalf) → client IP (`X-Forwarded-For` first hop, else `remote_addr`). Known IPs: `RICH_IP = 192.168.50.42` (Rich), `MATT_IP = 192.168.50.98` (Matt), `OPERATOR_IP = 192.168.50.51` (the Mainframe itself — persona "Operator", operator data files), `DASHBOARD_TEST_IP = 192.168.50.227`, `MISS_PI_IP = 192.168.50.179` (mapped to Rich). Traffic from Docker bridge ranges (`172.17.*`–`172.20.*` — NAT-masked) falls back to `DEFAULT_USER_CONFIG` (persona "Dashboard", operator data files). Identity selects the user name, profile/behavior/lists/transcript paths, session partitioning, and chat history.
 
-**Edge device:** MissPi / Mini Pi (Raspberry Pi 5) at `192.168.50.179`, user `minipi`, workdir `/home/minipi/miss-pi`. Provides SSH command execution, WiFi CSI radar feeds, and a YOLO camera vision stream.
+**Edge device:** MissPi / Mini Pi (Raspberry Pi 5) at `192.168.50.179`, user `minipi`, workdir `/home/minipi/miss-pi`. **Retired as the spatial sensor (Sep 27, 2026):** the X17's LGI webcam perception stack (LGI v1.2 "Her Seeing Me", device `x17-webcam`) now provides the `radar_motion` + `vision_frame` feeds into the Burst Receiver — the WiFi CSI radar and YOLO camera stream duties moved to the X17; the X17's desktop-vision chat turns (screenshot + OCR on `POST /api/chat`) are answered by the Chat Gateway's vision LLM ladder (§3.1). MissPi remains online for SSH command execution (Sandbox Gateway target) only.
 
 ---
 
@@ -50,7 +50,7 @@ All services live on the external Docker network `docker-containers_default`.
 **Chat & History** — one server-side store per operator identity, shared across devices (see §3.4)
 | Method | Route | Purpose |
 |---|---|---|
-| POST | `/api/chat` | Main chat endpoint (LLM + memory context + tool calling); persists both turns to chat history, echoes `chat_message` to the sender's IP room, and emits `tool_execution` when tools run (§3.2 tool pipeline) |
+| POST | `/api/chat` | Main chat endpoint (LLM + memory context + tool calling); persists both turns to chat history, echoes `chat_message` to the sender's IP room, and emits `tool_execution` when tools run (§3.2 tool pipeline). With `image_base64` it becomes a desktop-vision turn (§3.1 note below) |
 | GET | `/api/history/<user_id>` | Paired user↔Polaris history for a user, dashboard format (identity by path, not IP — the dashboard's 3 s cross-device sync poll) |
 | GET | `/api/chat/history` | Full history for the IP-authenticated user → `{status, user, messages}` (the phone's sync read) |
 | POST | `/api/chat/history` | Replace the IP-authenticated user's full history (`{"messages": [...]}`) |
@@ -58,6 +58,8 @@ All services live on the external Docker network `docker-containers_default`.
 | POST | `/api/chat/history/sync` | Append one client-supplied message object (`{"message": {...}}`) to the IP-authenticated user's history |
 
 **`POST /api/chat` HTTP return — raw envelope, by design.** The handler ends with `return jsonify(response_data)`, passing the raw Ollama envelope verbatim (unstripped `response` + `thinking`). It is a debug/API surface only — **no rendering path consumes it**: the dashboard's fetch handler discards the HTTP body (§11), the Android app renders only from `GET /api/chat/history`, and every persisted/broadcast surface (transcript, session, chat history, socketio `chat_message`) carries only the stripped prose (§3.2 pipeline).
+
+**Desktop-vision turns (Polaris Desktop Vision, LGI v1.2).** A `POST /api/chat` request carrying `image_base64` (desktop screenshot JPEG) — optionally `ocr_text` (≤4000 chars) and `active_window` — bypasses the tool pipeline and is answered by the vision LLM ladder: `VISION_LLM_MODEL` (`polaris-ai:latest`) first, then `VISION_LLM_FALLBACK_MODEL` (`mistral-large-3:675b-cloud`) on any failure — degrade, never fabricate. The image rides Ollama's multimodal `images` field (`OLLAMA_URL`, default `http://ollama:11434/api/generate` via Docker DNS) with a desktop-context prompt built from the active-window title and OCR text; timeout is 120 s (`VISION_LLM_TIMEOUT`, hardcoded). Total ladder failure raises into the standard 503 error path. The reply envelope adds `vision: true` + `vision_model` (raw-HTTP surface only — clients render via `chat_message` as usual).
 
 **Voice**
 | Method | Route | Purpose |
@@ -197,7 +199,7 @@ Prompt blocks, in order:
 
 ## 4. Burst Receiver (host 8083 → container 5001)
 
-**File:** `burst_receiver.py` — high-throughput telemetry/burst ingestion, CSI radar spatial tracking, and the YOLO vision stream.
+**File:** `burst_receiver.py` — high-throughput telemetry/burst ingestion, CSI radar spatial tracking, the vision stream (X17 webcam YOLO detections + narration), and Ollama image-analysis endpoints.
 
 ### REST API
 | Method | Route | Purpose |
@@ -207,8 +209,8 @@ Prompt blocks, in order:
 | GET | `/api/burst/list`, `/api/burst/<burst_id>` | List / fetch stored bursts |
 | GET | `/api/telemetry/recent` | Recent telemetry |
 | POST | `/api/radar/ingest` | Submit CSI vector for spatial processing |
-| POST | `/api/vision/analyze` | Analyze image/burst with YOLO |
-| GET | `/api/vision/analyze-burst/<burst_id>`, `/api/vision/models`, `/api/vision/test`, `/api/vision/stream/status` | Vision analysis, model list, stream status |
+| POST | `/api/vision/analyze` | Analyze an image (`image_path`, or base64 `image_data` + `filename`) with the Ollama vision model — prompt types: general / tactical / ocr / sharpness_check |
+| GET | `/api/vision/analyze-burst/<burst_id>`, `/api/vision/models`, `/api/vision/test`, `/api/vision/stream/status` | Burst image analysis (cached `vision_analysis.json` or async trigger), vision-capable model list, pipeline test, live stream status |
 | GET | `/api/jarvis/announcements` | Announcement feed |
 | GET | `/api/status` | Receiver status |
 
@@ -231,17 +233,23 @@ Payload: `{ "csi_vector": [...], "timestamp"?, "device_id"?, "metadata"? }`
 | `vision_connect` | client → server | Server emits `vision_ack` and joins client into room `vision_dashboard` |
 | `vision_frame` | client → server | Live camera frame → processed → broadcast as `vision_update` (room `vision_dashboard`) |
 | `vision_disconnect` | client → server | End vision stream |
-| `radar_motion` | client → server | Pre-processed motion event from the Miss Pi CSI radar daemon (timestamp / confidence / intensity / duration) |
+| `radar_motion` | client → server | Pre-processed motion event (timestamp / confidence / intensity / duration). Legacy source: Miss Pi CSI radar daemon. Current source: X17 webcam perception (LGI SpatialReporter @ 1 Hz, `device_id: x17-webcam`) sending explicit `x` / `y` / `z` / `velocity` — real coordinates pass through untouched into the `radar_update` broadcast (`people_count` also rides the payload but is not currently forwarded); coordinate-less legacy payloads keep the intensity-driven simulation |
 | `join_vision` | client → server | Join room `vision_dashboard`; server replies with `vision_history` (last 10 detections) |
 
 ### Configuration
-| Variable | Default | Purpose |
+
+All values are hardcoded constants in `burst_receiver.py` — the service reads no environment variables.
+
+| Constant | Value | Purpose |
 |---|---|---|
-| `BURST_STORAGE_DIR` | `/data/freeroam/bursts` | Burst storage with automatic rotation |
-| `TELEMETRY_LOG` | `/data/freeroam/telemetry.log` | Telemetry log path |
-| `MAX_QUEUE_SIZE` | `10000` | Queue cap before rejection |
-| `CSI_WINDOW_SIZE` | `30` | Rolling CSI sample buffer for trajectory |
-| `MOTION_THRESHOLD` | `0.05` | Minimum velocity for motion detection |
+| `ALLOWED_IPS` | `192.168.50.42` / `.98` / `.51` / `.179` | LAN-only REST guard (Rich / Matt / Operator / MissPi). Loopback and Docker-bridge source IPs are denied — Mainframe-shell and `docker exec` curls get 403 by design (§13) |
+| `USER_CONFIG` | per allowed IP | Per-user storage: `burst_dir` = `/data/freeroam/<user>/bursts`, `telemetry_log` = `/data/freeroam/<user>/telemetry.log`; MissPi flagged `radar_source: True` |
+| `MAX_BURST_AGE_HOURS` | `24` | Burst retention before rotation |
+| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama endpoint for `/api/vision/*` — **does not resolve inside the container** (verified: `ollama:11434` answers 200, `localhost:11434` refuses), so the image-analysis endpoints are dead in-container; the live vision paths are the Socket.IO feeds and the Chat Gateway's Desktop Vision ladder (§3.1) |
+| `VISION_MODEL` | `mistral-large-3:675b-cloud` | Ollama model for `/api/vision/*` analysis |
+| `VISION_TIMEOUT` | `60` | Ollama vision request timeout (s) |
+| `VISION_PROMPTS` | general / tactical / ocr / sharpness_check | Analysis prompt presets |
+| `CSIRadarEngine` | `window_size=30`, `movement_threshold=0.15` | Rolling CSI buffer for trajectory + motion detection threshold |
 ---
 
 ## 5. Sandbox Gateway (host 7007)
@@ -420,6 +428,8 @@ polaris-gateway:
     - GATEWAY_PORT=5000
     - OLLAMAHOST=172.17.0.1:11434
     - OLLAMA_MODEL=polaris-ai:latest
+    - VISION_LLM_MODEL=polaris-ai:latest                        # Desktop Vision (LGI vision turns): primary image model
+    - VISION_LLM_FALLBACK_MODEL=mistral-large-3:675b-cloud     # proven vision-capable fallback if the primary fails
     - DATA_DIR=/app/data
     - KOKORO_CACHE_DIR=/app/kokoro-cache
     - USER_DATA_DIR=/data/freeroam
@@ -431,6 +441,8 @@ polaris-gateway:
   depends_on: [ollama]
   restart: unless-stopped
 ```
+
+The Chat Gateway resolves Ollama via `OLLAMA_URL` (default `http://ollama:11434/api/generate` — Docker DNS on `docker-containers_default`); the compose `OLLAMAHOST` value is read by neither service, and `burst_receiver.py` hardcodes `http://localhost:11434` (dead in-container — §4 Configuration).
 
 **polaris-dashboard**
 ```yaml
@@ -491,7 +503,8 @@ curl -X POST http://localhost:11434/api/pull -d '{"name": "nomic-embed-text"}'
 curl -s http://localhost:8082/api/status             # Chat Gateway
 curl -s http://localhost:8082/api/status/tasks       # Task tracking
 curl -s http://localhost:8082/api/memory/vault/stats # Memory Vault (documents + indexed entries)
-curl -s http://localhost:8083/api/status             # Burst Receiver
+curl -s http://localhost:8083/api/status             # Burst Receiver — 403 from the Mainframe shell by design (LAN-only guard sees Docker-bridge IP); call from an allowlisted device (Rich/Matt/MissPi) or use docker logs polaris-gateway
+docker exec polaris-gateway curl -s --max-time 4 http://ollama:11434/api/tags   # in-container Ollama path used by chat + Desktop Vision ladder (http://ollama:11434)
 curl -s http://localhost:7007/api/status             # Sandbox Gateway
 curl -s http://localhost:7000/ | head -5             # Dashboard page
 curl -s http://localhost:11434/api/tags              # Ollama models
@@ -505,8 +518,8 @@ docker logs polaris-gateway 2>&1 | grep -E 'DEBUG|Tool Execution|GUARDRAIL'     
 
 | File | Role |
 |---|---|
-| `polaris_continuous_learning_gateway.py` | Chat Gateway app — HTTP + Socket.IO, North Star-primacy system prompt (§3.5), tool calling + stripper pipeline (§3.2), voice pipeline, sessions, heuristics, task tracking |
-| `burst_receiver.py` | Burst Receiver app — telemetry ingestion, CSI radar, vision stream |
+| `polaris_continuous_learning_gateway.py` | Chat Gateway app — HTTP + Socket.IO, North Star-primacy system prompt (§3.5), tool calling + stripper pipeline (§3.2), voice pipeline, sessions, heuristics, task tracking, Desktop Vision turns (§3.1) |
+| `burst_receiver.py` | Burst Receiver app — telemetry ingestion, CSI radar, vision stream (X17 webcam `vision_frame` / `radar_motion` feeds), Ollama image-analysis endpoints (in-container Ollama URL dead, §4 Configuration) |
 | `sandbox_gateway.py` | Sandbox Gateway app — Mini Pi SSH console |
 | `run_gateway.sh` | Container entrypoint — launches all three services |
 | `memory_db.py` | SQLite memory layer (users, messages, heuristics, profiles, lists) |
@@ -528,4 +541,3 @@ docker logs polaris-gateway 2>&1 | grep -E 'DEBUG|Tool Execution|GUARDRAIL'     
 Legacy entrypoints on disk (copied into the image, **not launched**): `freeroam_gateway.py`, `polaris_gateway.py`, `polaris_websocket_gateway.py`, `websocket_server.py`, `status_dashboard.html`.
 
 **Dashboard files** (`freeroam/polaris-dashboard/`): `Polaris_page.html` (the entire UI — single-file HTML/CSS/JS), `nginx.conf`, `Dockerfile`.
-
