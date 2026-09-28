@@ -186,7 +186,7 @@ To eliminate all mock data and drive the 3D canvas with live production metrics,
 
 # Polaris Gateway
 
-## (Polaris-gateway.md)
+### [Polaris-gateway.md](Polaris-gateway.md)
 
 Core Capabilities & System Connections
 Polaris Gateway serves as the centralized intelligence, communication, and system administration engine for the FreeRoam AI ecosystem running on the Dell Mainframe.
