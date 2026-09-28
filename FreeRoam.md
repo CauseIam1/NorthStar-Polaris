@@ -16,58 +16,58 @@ A covert, edge-compute architecture for real-time AI-assisted situational awaren
 
 ```
 ┌───────────────────────────────────────────────────────────────┐
-│                 RED MAGIC 9 PRO (edge device)                  │
-│                                                                │
-│  MainActivity (Polaris UI)                                     │
-│  ├─ Top nav: status • identity • voice • speed • media          │
-│  ├─ Rolling 10-message chat window (Room-backed)                │
-│  └─ Mic button • auto-speak • bubble playback • mini player    │
-│                                                                │
-│  On-device TTS pipeline                                        │
-│  ├─ KokoroTTS            sherpa-onnx, 24 kHz mono PCM16         │
-│  ├─ PolarisAudioStore    polaris_<id>.wav cache (MediaStore)    │
-│  └─ MediaSessionManager  ExoPlayer playback (speed-aware)       │
-│                                                                │
+│                 RED MAGIC 9 PRO (edge device)                 │
+│                                                               │
+│  MainActivity (Polaris UI)                                    │
+│  ├─ Top nav: status • identity • voice • speed • media        │
+│  ├─ Rolling 10-message chat window (Room-backed)              │
+│  └─ Mic button • auto-speak • bubble playback • mini player   │
+│                                                               │
+│  On-device TTS pipeline                                       │
+│  ├─ KokoroTTS            sherpa-onnx, 24 kHz mono PCM16       │
+│  ├─ PolarisAudioStore    polaris_<id>.wav cache (MediaStore)  │
+│  └─ MediaSessionManager  ExoPlayer playback (speed-aware)     │
+│                                                               │
 │  Network layer                                                │
-│  ├─ PolarisWebSocketClient  ws://192.168.50.51:8082             │
-│  │    (chat events, stateful auto-reconnect)                    │
-│  ├─ ChatRepository          "dumb terminal" over gateway API    │
-│  └─ NetworkRepository / PolarisGateway (REST endpoints)         │
-│                                                                │
-│  Voice capture (walkie-talkie input)                           │
-│  ├─ VoiceCaptureController  SpeechRecognizer STT + partials    │
-│  │    PARTIAL wake lock • 30 s cap • 2.5 s end-of-speech        │
-│  └─ MediaSessionManager     WatchSessionPlayer: watch PLAY/    │
-│       PAUSE → toggleVoiceCapture() (AVRCP media buttons)       │
-│                                                                │
-│  Tactical services                                             │
-│  ├─ TacticalBackgroundService  mic FGS (dataSync|microphone)   │
-│  │    started by MainActivity.onStart() (START_STICKY)         │
-│  └─ ClipboardMonitorService    clipboard → TTS readout         │
-│                                                                │
+│  ├─ PolarisWebSocketClient  ws://192.168.50.51:8082           │
+│  │    (chat events, stateful auto-reconnect)                  │
+│  ├─ ChatRepository          "dumb terminal" over gateway API  │
+│  └─ NetworkRepository / PolarisGateway (REST endpoints)       │
+│                                                               │
+│  Voice capture (walkie-talkie input)                          │
+│  ├─ VoiceCaptureController  SpeechRecognizer STT + partials   │
+│  │    PARTIAL wake lock • 30 s cap • 2.5 s end-of-speech      │
+│  └─ MediaSessionManager     WatchSessionPlayer: watch PLAY/   │
+│       PAUSE → toggleVoiceCapture() (AVRCP media buttons)      │
+│                                                               │
+│  Tactical services                                            │
+│  ├─ TacticalBackgroundService  mic FGS (dataSync|microphone)  │
+│  │    started by MainActivity.onStart() (START_STICKY)        │
+│  └─ ClipboardMonitorService    clipboard → TTS readout        │
+│                                                               │
 │  Local storage                                                │
-│  ├─ ConversationDatabase (Room)   chat_db                      │
-│  └─ ChatArchiverWorker             periodic transcript archive  │
-│                                                                │
-│  Overlays: PolarisAvatarView (AI face) • MiniPlayerView         │
+│  ├─ ConversationDatabase (Room)   chat_db                     │
+│  └─ ChatArchiverWorker             periodic transcript archive│
+│                                                               │
+│  Overlays: PolarisAvatarView (AI face) • MiniPlayerView       │
 └───────────────────────────────────────────────────────────────┘
                           │ LAN (192.168.50.x)
                           ▼
 ┌───────────────────────────────────────────────────────────────┐
-│              POLARIS GATEWAY (192.168.50.51)                    │
-│  ├─ Chat Gateway (Flask-SocketIO)   host port 8082             │
-│  ├─ Burst Service                   host port 8083             │
-│  ├─ Sandbox Service                 host port 7007             │
-│  ├─ Ollama LLM backend              port 11434                 │
-│  └─ Per-user context under /data/freeroam/<user>/               │
-│      (profiles • transcripts • behavior libs)                  │
+│              POLARIS GATEWAY (192.168.50.51)                  │
+│  ├─ Chat Gateway (Flask-SocketIO)   host port 8082            │
+│  ├─ Burst Service                   host port 8083            │
+│  ├─ Sandbox Service                 host port 7007            │
+│  ├─ Ollama LLM backend              port 11434                │
+│  └─ Per-user context under /data/freeroam/<user>/             │
+│      (profiles • transcripts • behavior libs)                 │
 └───────────────────────────────────────────────────────────────┘
                           ▼
 ┌───────────────────────────────────────────────────────────────┐
-│         POLARIS DASHBOARD (Next.js 14, port 7000)              │
-│  ├─ Real-time chat monitoring across all users                  │
-│  ├─ Multi-stream visualization (Rich / Matt / Operator)         │
-│  └─ Operator transcript + history API access                    │
+│         POLARIS DASHBOARD (Next.js 14, port 7000)             │
+│  ├─ Real-time chat monitoring across all users                │
+│  ├─ Multi-stream visualization (Rich / Matt / Operator)       │
+│  └─ Operator transcript + history API access                  │
 └───────────────────────────────────────────────────────────────┘
 ```
 
