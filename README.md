@@ -1,4 +1,5 @@
 # Project North Star
+ ![Radar_both_wallets](Radar_both_wallets.png)
 ## Hardware & System Profiles
 Primary Core Server (The Mainframe)
 The central intelligence and routing hub of the network.
