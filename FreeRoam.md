@@ -4,8 +4,11 @@
 
 A covert, edge-compute architecture for real-time AI-assisted situational awareness on the **Red Magic 9 Pro**. FreeRoam features automatic multi-user identity detection, a walkie-talkie loop with Polaris (AI) via the Polaris Gateway — **voice in** (watch PLAY/PAUSE push-to-talk or the in-app mic button, both working with the screen locked) and **voice out** (fully on-device TTS synthesis) — every AI reply is spoken by a local Kokoro engine (sherpa-onnx), streamed sentence-by-sentence while the reply generates (speak-while-she-writes, v3.5) — and since v3.6, playback is fully text-only: no WAV artifacts, every bubble replays by re-synthesizing from text. No cloud TTS. No server-side audio round-trips.
 
-- **Current app version:** v3.5.1 (Sep 2026) — deployed and operator-verified on the Garmin watch (field retest passed Sep 26, 2026)
+- **Current app version:** versionName **1.0.4** (versionCode 5 — Sep 28, 2026) — deployed and operator-verified; voice engine self-heal field-confirmed
 - **Voice push-to-talk (v3.3):** watch PLAY/PAUSE / mic button → `VoiceCaptureController` (`SpeechRecognizer`, on-device engine preferred) → live partials in the input field → stop → auto-send — captures survive screen-lock via the mic-typed foreground service
+- **Voice engine self-heal (v1.0.4):** the RedMagic's on-device speech engine can wedge mid-capture — no callbacks at all — and every later press hears nothing until a reboot (paired with a device-level logd freeze on this ROM). `finalizeAndDeliver()` now counts silent captures (`SILENT_CAPTURES_BEFORE_ENGINE_HOP`) and arms an engine hop: the next PTT press is served by the **system (cloud) recognizer** instead of the wedged on-device engine; a successful capture clears the hop and returns to the private engine. A wedge costs one failed press, no reboot.
+- **Android build signing (v1.0.4):** the debug keystore is committed (`android/app/freeroam-debug.keystore`) and pinned into the build image (`freeroam/Dockerfile` → `/root/.android/debug.keystore`) so every build signs identically and `adb install -r` upgrades in place — fresh images previously generated a new key, forcing uninstall + reinstall. Note: ADB-over-TCP (5555) does not survive phone reboots on this ROM — re-arm via USB once; the gateway's watchdog (`run_gateway.sh`) reconnects automatically.
+- **Reboot-proof wireless ADB (v1.0.4 era):** Wireless debugging is ON (`Settings.Global adb_wifi_enabled=1`) and the Mainframe is paired (pair GUID `adb-FY24031100E6-71NED1`). The Mainframe runs Google platform-tools v37 at `~/platform-tools/adb` (v37 has mDNS + TLS pairing; the distro adb v28 on `/usr/bin` does not). After any phone reboot the device re-appears automatically on the host as `adb-FY24031100E6-71NED1._adb-tls-connect._tcp` in `adb devices` — **no USB, no `adb tcpip`, no manual step**. From Polaris's sandbox (whose ADB is Debian 34, no mDNS): reach the phone through `ssh_execute` on the Mainframe → `~/platform-tools/adb`; the container's `:5555` bridge remains the quick path whenever TCP mode is armed.
 - **Watch tether (v3.3; play-state model v3.5.2):** the AVRCP media session stays listed with a silent 60 s seed track. While she speaks the seed loops silently (session PLAYING — the watch's pause button stops her speech and starts the mic); the moment her voice drains, the seed parks PAUSED and her full reply takes the track title with a fresh mediaId (a "new track" the Garmin reliably refreshes and marquee-scrolls) — so the watch ends every exchange showing her reply and a PLAY button, ready for push-to-talk
 - **Strict text-chat loop:** speak or type → send → gateway → LLM → response → spoken aloud (v2.9 hardening: text in / text out only — voice capture just feeds the same text pipeline)
 - **On-device speech pipeline (v3.1; text-only since v3.6):** `KokoroTTS` → `StreamingTtsPlayer` direct PCM playback (no audio artifacts); `PolarisAudioStore` remains only for the legacy WAV sweep
@@ -16,58 +19,58 @@ A covert, edge-compute architecture for real-time AI-assisted situational awaren
 
 ```
 ┌───────────────────────────────────────────────────────────────┐
-│                 RED MAGIC 9 PRO (edge device)                 │
-│                                                               │
-│  MainActivity (Polaris UI)                                    │
-│  ├─ Top nav: status • identity • voice • speed • media        │
-│  ├─ Rolling 10-message chat window (Room-backed)              │
-│  └─ Mic button • auto-speak • bubble playback • mini player   │
-│                                                               │
-│  On-device TTS pipeline                                       │
-│  ├─ KokoroTTS            sherpa-onnx, 24 kHz mono PCM16       │
-│  ├─ PolarisAudioStore    polaris_<id>.wav cache (MediaStore)  │
-│  └─ MediaSessionManager  ExoPlayer playback (speed-aware)     │
-│                                                               │
+│                 RED MAGIC 9 PRO (edge device)                  │
+│                                                                │
+│  MainActivity (Polaris UI)                                     │
+│  ├─ Top nav: status • identity • voice • speed • media          │
+│  ├─ Rolling 10-message chat window (Room-backed)                │
+│  └─ Mic button • auto-speak • bubble playback • mini player    │
+│                                                                │
+│  On-device TTS pipeline                                        │
+│  ├─ KokoroTTS            sherpa-onnx, 24 kHz mono PCM16         │
+│  ├─ PolarisAudioStore    polaris_<id>.wav cache (MediaStore)    │
+│  └─ MediaSessionManager  ExoPlayer playback (speed-aware)       │
+│                                                                │
 │  Network layer                                                │
-│  ├─ PolarisWebSocketClient  ws://192.168.50.51:8082           │
-│  │    (chat events, stateful auto-reconnect)                  │
-│  ├─ ChatRepository          "dumb terminal" over gateway API  │
-│  └─ NetworkRepository / PolarisGateway (REST endpoints)       │
-│                                                               │
-│  Voice capture (walkie-talkie input)                          │
-│  ├─ VoiceCaptureController  SpeechRecognizer STT + partials   │
-│  │    PARTIAL wake lock • 30 s cap • 2.5 s end-of-speech      │
-│  └─ MediaSessionManager     WatchSessionPlayer: watch PLAY/   │
-│       PAUSE → toggleVoiceCapture() (AVRCP media buttons)      │
-│                                                               │
-│  Tactical services                                            │
-│  ├─ TacticalBackgroundService  mic FGS (dataSync|microphone)  │
-│  │    started by MainActivity.onStart() (START_STICKY)        │
-│  └─ ClipboardMonitorService    clipboard → TTS readout        │
-│                                                               │
+│  ├─ PolarisWebSocketClient  ws://192.168.50.51:8082             │
+│  │    (chat events, stateful auto-reconnect)                    │
+│  ├─ ChatRepository          "dumb terminal" over gateway API    │
+│  └─ NetworkRepository / PolarisGateway (REST endpoints)         │
+│                                                                │
+│  Voice capture (walkie-talkie input)                           │
+│  ├─ VoiceCaptureController  SpeechRecognizer STT + partials    │
+│  │    PARTIAL wake lock • 30 s cap • 2.5 s end-of-speech        │
+│  └─ MediaSessionManager     WatchSessionPlayer: watch PLAY/    │
+│       PAUSE → toggleVoiceCapture() (AVRCP media buttons)       │
+│                                                                │
+│  Tactical services                                             │
+│  ├─ TacticalBackgroundService  mic FGS (dataSync|microphone)   │
+│  │    started by MainActivity.onStart() (START_STICKY)         │
+│  └─ ClipboardMonitorService    clipboard → TTS readout         │
+│                                                                │
 │  Local storage                                                │
-│  ├─ ConversationDatabase (Room)   chat_db                     │
-│  └─ ChatArchiverWorker             periodic transcript archive│
-│                                                               │
-│  Overlays: PolarisAvatarView (AI face) • MiniPlayerView       │
+│  ├─ ConversationDatabase (Room)   chat_db                      │
+│  └─ ChatArchiverWorker             periodic transcript archive  │
+│                                                                │
+│  Overlays: PolarisAvatarView (AI face) • MiniPlayerView         │
 └───────────────────────────────────────────────────────────────┘
                           │ LAN (192.168.50.x)
                           ▼
 ┌───────────────────────────────────────────────────────────────┐
-│              POLARIS GATEWAY (192.168.50.51)                  │
-│  ├─ Chat Gateway (Flask-SocketIO)   host port 8082            │
-│  ├─ Burst Service                   host port 8083            │
-│  ├─ Sandbox Service                 host port 7007            │
-│  ├─ Ollama LLM backend              port 11434                │
-│  └─ Per-user context under /data/freeroam/<user>/             │
-│      (profiles • transcripts • behavior libs)                 │
+│              POLARIS GATEWAY (192.168.50.51)                    │
+│  ├─ Chat Gateway (Flask-SocketIO)   host port 8082             │
+│  ├─ Burst Service                   host port 8083             │
+│  ├─ Sandbox Service                 host port 7007             │
+│  ├─ Ollama LLM backend              port 11434                 │
+│  └─ Per-user context under /data/freeroam/<user>/               │
+│      (profiles • transcripts • behavior libs)                  │
 └───────────────────────────────────────────────────────────────┘
                           ▼
 ┌───────────────────────────────────────────────────────────────┐
-│         POLARIS DASHBOARD (Next.js 14, port 7000)             │
-│  ├─ Real-time chat monitoring across all users                │
-│  ├─ Multi-stream visualization (Rich / Matt / Operator)       │
-│  └─ Operator transcript + history API access                  │
+│         POLARIS DASHBOARD (Next.js 14, port 7000)              │
+│  ├─ Real-time chat monitoring across all users                  │
+│  ├─ Multi-stream visualization (Rich / Matt / Operator)         │
+│  └─ Operator transcript + history API access                    │
 └───────────────────────────────────────────────────────────────┘
 ```
 
