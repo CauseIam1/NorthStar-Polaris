@@ -45,6 +45,8 @@ All services live on the external Docker network `docker-containers_default`.
 
 **File:** `polaris_continuous_learning_gateway.py` — Flask + Flask-SocketIO app powered by Ollama, with tool calling, dual-tier memory, a voice pipeline, session management, and heuristics. Blueprints registered: `memory_bp` (Memory Vault), `supervisor_bp` (Supervisor Audit).
 
+**Production WSGI server (gunicorn + gevent).** Served by `gunicorn -k gunicorn_gevent_ws.GeventWebSocketWorker -w 1` from `run_gateway.sh` (a tiny local worker subclass that serves `gevent.pywsgi` with `WebSocketHandler` — the stock `gevent` worker lacks `wsgi.websocket` in the environ, which makes every engineio websocket upgrade fail with "The gevent-websocket server is not configured appropriately"; werkzeug threading mode remains the direct-run fallback). `SocketIO` picks `async_mode='gevent'` when running under gunicorn (clean WS session close — no werkzeug 500-spam artifacts) and `threading` otherwise; a failed gevent init falls back to threading. Single worker by design — Flask-SocketIO multi-worker requires a message queue (Redis). Boot-time systems (Memory Vault watchdog, node-cleanup loop, voice warmup) start via `_start_background_systems()`, invoked on import under gunicorn and from `__main__` otherwise. Knobs: `GUNICORN_TIMEOUT` (default 120 s); `--access-logfile -` keeps per-request lines greppable in `docker logs`.
+
 ### 3.1 REST API
 
 **Chat & History** — one server-side store per operator identity, shared across devices (see §3.4)
@@ -139,7 +141,7 @@ There is **no** `request_history` handler and no `chat_history` emit — history
    - **Legacy inline calls** (`read_doc(filename="…")`, `run_sandbox_code(code="…")`, …): executed by the parser but previously left in the bubble — stripped with the same name/argument shapes the parser matches
    - **Empty `json` fences** left behind after inner-JSON removal, plus triple-newline collapse
 5. `tool_execution` carries the actual results; only the **cleaned prose** is flushed to the stream, persisted, echoed via `chat_message`, and fed to the session window — raw tool JSON never pollutes history, memory, or future-turn context
-6. When tools ran, a **truthful tool-report follow-up turn** is generated: a second LLM pass over the real results (large fields truncated to 1 500 chars by `_truncate_tool_results()`), reporting-only instructions (never claim success on a failure result, plain text, no further tool calls); the report turn itself is stripped so it can never recurse. Fallback `generate_follow_up_message()` is result-aware — outcomes are reported exactly as they happened, never fabricated
+6. When tools ran, a **truthful tool-report follow-up turn** is generated: a second LLM pass over the real results (large fields truncated to 1 500 chars by `_truncate_tool_results()`; document `content` pages carry their own 8 000-char budget — `MAX_READ_PAGE_CHARS`, matching `read_doc`'s hard page cap), reporting-only instructions (never claim success on a failure result, plain text, no further tool calls); the report turn itself is stripped so it can never recurse. Fallback `generate_follow_up_message()` is result-aware — outcomes are reported exactly as they happened, never fabricated
 
 ### 3.3 Configuration (environment)
 
@@ -191,9 +193,9 @@ Prompt blocks, in order:
 - [PUSH NOTIFICATIONS - GOTIFY] · [MEMORY VAULT - YOUR LONG-TERM MEMORY] (read-only `memory_vault_query`; the vault is written only by the learning process)
 - [KNOWN FACTS ABOUT {USER}] — memory context + behavior lib + heuristics + session window + tools block · CORE DIRECTIVES (vibe; TTS-ready, no emojis; ≤3 sentences unless asked; personalize; follow heuristics; use recent context)
 
-**Context guardrail:** the prompt renders once; if it exceeds `SYSTEM_PROMPT_TOKEN_GUARD` (**6500** est. tokens, `chars ÷ 4`), the conversation window shrinks stepwise (`WINDOW_SHRINK_STEPS = [6, 3, 0]` exchanges) and re-renders so the persona, KNOWN FACTS, and directives survive — only the oldest exchanges are sacrificed (`[GUARDRAIL]` log line). ~1.6k headroom is kept under the model's 8192 `num_ctx` for the user turn, reply, and thinking.
+**Context guardrail:** the prompt renders once; if it exceeds `SYSTEM_PROMPT_TOKEN_GUARD` (**6500** est. tokens, `chars ÷ 4`), the conversation window shrinks stepwise (`WINDOW_SHRINK_STEPS = [6, 3, 0]` exchanges) and re-renders so the persona, KNOWN FACTS, and directives survive — only the oldest exchanges are sacrificed (`[GUARDRAIL]` log line). The guard stays at 6500 est. tokens — deliberately conservative under the model's 32768 `num_ctx` (v3.4, raised from 8192): the extra headroom is reserved for tool-result pages (up to `MAX_READ_PAGE_CHARS` = 8 000 chars) plus the user turn, reply, and thinking, not for history bloat.
 
-**Modelfile mirror:** the Ollama-side base model carries the same persona — `freeroam/polaris-gateway/Modelfile` defines `polaris-ai:latest` as `FROM glm-5.3-flash:cloud` (temperature 0.7, `num_ctx 8192`) with the North Star primacy block in its SYSTEM text. Modelfile edits are applied with `ollama create polaris-ai:latest -f <Modelfile>` — an instant manifest swap on the running ollama container, no restart.
+**Modelfile mirror:** the Ollama-side base model carries the same persona — `freeroam/polaris-gateway/Modelfile` defines `polaris-ai:latest` as `FROM glm-5.3-flash:cloud` (temperature 0.7, `num_ctx 32768`) with the North Star primacy block in its SYSTEM text. Modelfile edits are applied with `ollama create polaris-ai:latest -f <Modelfile>` — an instant manifest swap on the running ollama container, no restart.
 
 ---
 
@@ -282,7 +284,7 @@ All voice processing is server-side in the Chat Gateway. A global `VOICE_PROCESS
 ### POST /api/tts
 Request:
 ```json
-{ "text": "The system is operating normally.", "voice": "af_heart", "speed": 1.0 }
+{ "text": "The system is operating normally.", "voice": "af_emma", "speed": 1.0 }
 ```
 (`voice` and `speed` optional — default to `KOKORO_VOICE_NAME` / `KOKORO_SPEED`)
 
@@ -292,9 +294,11 @@ Errors: `400` no text · `503` voice processing unavailable (Kokoro not initiali
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `KOKORO_VOICE_NAME` | `af_heart` | Default voice model |
+| `KOKORO_VOICE_NAME` | `af_emma` | Default voice model (`af_emma` resolves to `bf_emma` via `KOKORO_VOICE_ALIASES`) |
 | `KOKORO_SPEED` | `1.0` | Playback speed multiplier |
 | `KOKORO_CACHE_DIR` | `/app/kokoro-cache` | Model weight cache (bind: `/mnt/rippled-data/kokoro-cache`) |
+
+**Per-call voice resolution:** `resolve_kokoro_voice()` maps request names through `KOKORO_VOICE_ALIASES` (`"af_emma"` → `"bf_emma"` — the friendly name is not a Kokoro v1.0 voicepack ID, so it resolves to the real Emma voicepack on every client); any other voicepack ID (e.g. `"af_heart"`) passes through unchanged. Requests without a `voice` field use `KOKORO_VOICE_NAME`.
 
 ### Other voice endpoints
 | Route | Purpose |
@@ -328,13 +332,15 @@ Exactly **15 tools** are routed by the `execute_tool_call` dispatcher — the ta
 
 **Routing policy (in system prompt):** notification requests → Gotify tool (never SSH); remote command execution → SSH tools; file operations → file tools.
 
+**File tool size semantics (`file_tools.py`):** every reported size is a true UTF-8 byte length, never a Python character count — `read_doc`/`write_doc` return `"size_bytes": len(content.encode('utf-8'))`, `append_doc` returns `"appended_bytes"` + `"total_bytes"` computed the same way, and `list_docs` uses `os.stat.st_size`. Byte and char counts diverge on non-ASCII content (e.g. `northstar.md`: 54,523 bytes vs 49,967 chars). **`read_doc` is page-based (v3.4):** it returns up to `length` characters starting at `offset` (hard cap `MAX_READ_PAGE_CHARS` = 8 000), with `has_more` / `next_offset` navigation fields so large vault files (e.g. the bind-mounted `northstar.md`) can be walked across conversational turns — one page per chat message, since the tool loop is capped at a single execution turn.
+
 **Standalone toolkit modules not wired into the running gateway:** `system_tools.py`, `livecharts_tools.py`, `www_tools.py` (imported only by the non-launched legacy entrypoint `freeroam_gateway.py`).
 ---
 
 ## 8. Memory Architecture
 
 ### Dual-tier live memory
-- **SQLite** (`memory_db.py`): users, messages, heuristics, profiles, lists, transcripts.
+- **SQLite** (`memory_db.py`): users, messages, heuristics, profiles, lists, transcripts. DB file: `/data/state/polaris_state.db` (`DEFAULT_DB_PATH`), lazily created on first use → host bind `/mnt/containers/freeroam/polaris-gateway/state/`, so memory state survives container recreates.
 - **ChromaDB** (`vector_memory.py`): collections for global knowledge, user memories, and conversation context. Embeddings generated by Ollama `nomic-embed-text` (hardcoded in `vector_memory.py`).
 - `GET /api/memory/stats` returns both tiers; `POST /api/vector/search` for semantic retrieval.
 
@@ -416,9 +422,12 @@ polaris-gateway:
     - polaris_data:/app/data                                          # distillation DB
     - /mnt/containers/freeroam/data:/data/freeroam                    # bursts, telemetry, profiles, chat_history.json
     - /mnt/containers/freeroam/polaris-gateway/ingest:/data/freeroam/polaris-gateway/ingest
+    - /home/causeiam/docker-containers/northstar.md:/data/freeroam/polaris-gateway/ingest/northstar.md:ro   # North Star blueprint, read-only in the ingest vault
+    - /home/causeiam/docker-containers/freeroam/Polaris-gateway.md:/data/freeroam/polaris-gateway/ingest/Polaris-gateway.md:ro   # this document, read-only in the ingest vault
     - /mnt/containers/freeroam/polaris-gateway/playground:/data/freeroam/polaris-gateway/playground
     - /mnt/containers/freeroam/polaris-gateway/memory-vault:/polaris_memory_vault:rw
     - /mnt/containers/freeroam/polaris-gateway/vector-db:/data/polaris_vector_db:rw
+    - /mnt/containers/freeroam/polaris-gateway/state:/data/state:rw   # SQLite state DB (memory_db, §8) — survives recreates
     - /mnt/containers/freeroam/livecharts:/livecharts:rw
     - /mnt/containers/freeroam/polaris-gateway/playground/www:/playground/www:rw
     - /mnt/rippled-data/kokoro-cache:/app/kokoro-cache                # Kokoro model cache (sdc)
@@ -441,6 +450,8 @@ polaris-gateway:
   depends_on: [ollama]
   restart: unless-stopped
 ```
+
+**Single-file `:ro` binds go stale on rename:** `northstar.md` and `Polaris-gateway.md` are mounted into the ingest vault as single-file bind mounts, which resolve the host file by inode — replacing either doc on the host via rename (`mv`, or an editor's atomic save) leaves the container serving the old inode. Recreate the container (or `docker cp` the new file back in) after editing either doc on the host.
 
 The Chat Gateway resolves Ollama via `OLLAMA_URL` (default `http://ollama:11434/api/generate` — Docker DNS on `docker-containers_default`); the compose `OLLAMAHOST` value is read by neither service, and `burst_receiver.py` hardcodes `http://localhost:11434` (dead in-container — §4 Configuration).
 
@@ -468,9 +479,9 @@ Network: external `docker-containers_default`. Named volumes: `polaris_data`, `o
 
 ### Image contents
 
-**Gateway Dockerfile** — `python:3.11-slim`; apt: `openssh-client`, `docker.io`, `curl`, `procps`; pip: flask / flask-cors / flask-socketio / requests / python-socketio / watchdog, `chromadb==0.5.23`, `faster-whisper`, `kokoro`, `soundfile`; `COPY *.py *.json *.html run_gateway.sh sandbox_static/`; `EXPOSE 5000 5001 7007`; `CMD ["./run_gateway.sh"]`.
+**Gateway Dockerfile** — `python:3.11-slim`; apt: `openssh-client`, `docker.io`, `curl`, `procps`, `adb`; pip: flask / flask-cors / flask-socketio / requests / python-socketio / watchdog / gunicorn / gevent / gevent-websocket, `chromadb==0.5.23`, `faster-whisper`, `kokoro`, `soundfile`; `COPY *.py *.json *.html run_gateway.sh sandbox_static/`; `EXPOSE 5000 5001 7007`; `CMD ["./run_gateway.sh"]`.
 
-**Entrypoint `run_gateway.sh`** — sets `FLASK_DEBUG=1` + `PYTHONUNBUFFERED=1`, then launches `burst_receiver.py` (:5001), `polaris_continuous_learning_gateway.py` (:5000), `sandbox_gateway.py` (:7007) as background processes and waits on all three PIDs.
+**Entrypoint `run_gateway.sh`** — arms an ADB watchdog for the operator phone (`192.168.50.42:5555`, 30 s auto-reconnect) and sets `PYTHONUNBUFFERED=1`, then launches `burst_receiver.py` (:5001), the chat gateway under `gunicorn -k gunicorn_gevent_ws.GeventWebSocketWorker -w 1 --access-logfile -` (:5000; custom worker = gevent.pywsgi + WebSocketHandler so engineio websocket upgrades work; auto-falls back to the werkzeug direct-run path if gunicorn/gevent is missing), and `sandbox_gateway.py` (:7007) as background processes and waits on all three PIDs.
 
 **Dashboard Dockerfile** — `nginx:alpine`; `COPY nginx.conf` + `COPY Polaris_page.html /usr/share/nginx/html/index.html`; `EXPOSE 80`.
 
@@ -487,7 +498,7 @@ docker compose build polaris-dashboard && docker compose up -d --no-deps polaris
 
 ### Required Ollama models
 
-- `polaris-ai:latest` — chat model (compose `OLLAMA_MODEL`). Defined by `freeroam/polaris-gateway/Modelfile`: `FROM glm-5.3-flash:cloud`, temperature 0.7, `num_ctx 8192`, base SYSTEM persona with the North Star primacy block (§3.5). Modelfile edits are applied with `ollama create polaris-ai:latest -f <Modelfile>` on the running ollama container — instant manifest swap, no restart
+- `polaris-ai:latest` — chat model (compose `OLLAMA_MODEL`). Defined by `freeroam/polaris-gateway/Modelfile`: `FROM glm-5.3-flash:cloud`, temperature 0.7, `num_ctx 32768` (v3.4), base SYSTEM persona with the North Star primacy block (§3.5). Modelfile edits are applied with `ollama create polaris-ai:latest -f <Modelfile>` on the running ollama container — instant manifest swap, no restart
 - `nomic-embed-text` — embeddings (vector memory + Memory Vault index)
 
 ```bash
@@ -509,6 +520,7 @@ curl -s http://localhost:7007/api/status             # Sandbox Gateway
 curl -s http://localhost:7000/ | head -5             # Dashboard page
 curl -s http://localhost:11434/api/tags              # Ollama models
 docker exec polaris-gateway tail -50 /data/freeroam/operator/operator_transcripts.log   # transcripts (root-owned bind mount — read inside the container)
+docker exec polaris-gateway ls -la /data/state/                    # SQLite state DB (memory_db, §8) — lazy-created on first use; absent right after a recreate is normal
 docker logs polaris-gateway 2>&1 | grep -E 'DEBUG|Tool Execution|GUARDRAIL'              # stripper / parser / guardrail evidence
 ```
 
@@ -522,7 +534,7 @@ docker logs polaris-gateway 2>&1 | grep -E 'DEBUG|Tool Execution|GUARDRAIL'     
 | `burst_receiver.py` | Burst Receiver app — telemetry ingestion, CSI radar, vision stream (X17 webcam `vision_frame` / `radar_motion` feeds), Ollama image-analysis endpoints (in-container Ollama URL dead, §4 Configuration) |
 | `sandbox_gateway.py` | Sandbox Gateway app — Mini Pi SSH console |
 | `run_gateway.sh` | Container entrypoint — launches all three services |
-| `memory_db.py` | SQLite memory layer (users, messages, heuristics, profiles, lists) |
+| `memory_db.py` | SQLite memory layer (users, messages, heuristics, profiles, lists) — DB at `/data/state/polaris_state.db`, host-persisted via the §12 state bind |
 | `vector_memory.py` | ChromaDB vector layer — embeddings via `nomic-embed-text` |
 | `memory_vault.py` | Memory Vault markdown store + 30 s re-index watchdog |
 | `memory_routes.py` | Blueprint `/api/memory/vault/*` |
