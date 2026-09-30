@@ -307,6 +307,8 @@ continuations on isolated utterances.
 
 ### 6.3 `audio_tts.py` — `KokoroTTS`
 
+> **Sole voice host (Oct 2026):** under the text-only mainframe directive, X17 is the ecosystem's only Kokoro TTS / Faster-Whisper STT host — the Polaris Gateway performs zero audio processing (voice routes deleted, audio libraries stripped from the gateway image).
+
 Local Kokoro pipeline (`lang_code='a'`, default voice `af_heart`, speed 1.2×,
 24 kHz) with chunked generation and `sounddevice` playback on the `lgi-tts`
 daemon thread. **Non-blocking `speak(text)`**; a generation counter makes
@@ -545,7 +547,7 @@ LGI runs **natively on Windows** — it is not a compose service and needs no
 container rebuild: mic, webcam, screen capture, GPU, and Qt GUI all require
 native desktop access.
 
-1. **Sync** the `LGI/` folder to the X17 (e.g. `scp -r LGI rich@192.168.50.227:C:/LGI`).
+1. **Sync** the `LGI/` folder to the X17 (e.g. `scp -r LGI rbuit@192.168.50.227:D:/LGI`).
 2. **eSpeak NG** — install from
    https://github.com/espeak-ng/espeak-ng/releases to the default location
    `C:\Program Files\eSpeak NG\` (required by Kokoro's phonemizer; LGI sets the
@@ -568,6 +570,22 @@ native desktop access.
    For webcam perception (v1.2) confirm the CAM LED is green, the radar room
    shows the `x17-webcam` device, and say *"Polaris, analyze this component"*
    for a spoken description of the camera view.
+8. **Gateway SSH access** — authorize the gateway's SSH key on the X17 so the
+   Polaris tools (`ssh_execute`, `ssh_deploy_file`, `ssh_fetch_file`) run
+   hands-free: copy the gateway's public key into
+   `C:\Users\rbuit\.ssh\authorized_keys`. Windows OpenSSH gotcha: if `rbuit`
+   is an Administrator, sshd reads **only**
+   `C:\ProgramData\ssh\administrators_authorized_keys` — paste the key there
+   instead and fix its ACLs:
+   `icacls "C:\ProgramData\ssh\administrators_authorized_keys" /inheritance:r /grant "SYSTEM:F" /grant "BUILTIN\Administrators:F"`.
+9. **Birthday-boot / auto-start** — create a Scheduled Task that launches LGI
+   at logon with the windowless interpreter (survives disconnects, unlike a
+   bare background start):
+   `schtasks /create /tn "LGI AutoStart" /sc onlogon /rl highest /tr "C:\Users\rbuit\AppData\Local\Python\bin\pythonw.exe D:\LGI\lgi.py"`
+   — re-run at will from any box: `schtasks /run /tn "LGI AutoStart"`.
+10. **Dependency self-check** — probe the Python stack (matches
+    `requirements.txt`) without touching the UI:
+    `ssh rbuit@192.168.50.227 "C:/Users/rbuit/AppData/Local/Python/bin/python.exe -c \"import socketio, cv2, mediapipe, ultralytics, faster_whisper, kokoro, PyQt6; print('LGI deps OK')\""`.
 
 ## 11. Failure Modes & Degradation
 
@@ -622,8 +640,12 @@ native desktop access.
   `vision_frame`. Point `LGI_VLM_URL` at a local Ollama to keep analyze
   frames fully on-device.
 * **Clipboard change-gating** — stale clipboard contents are never re-sent.
-* **Access control** — gateway allowlists the X17 IP; audit payloads carry the
-  operator identity (`rich`); vault persistence decisions belong to the gateway.
+* **Access control** — the chat gateway accepts the X17 IP for the socketio
+  sensor feed (radar/vision handlers are IP-ungated), and the Burst Receiver
+  REST allowlist carries it as `LGI_X17_IP` (192.168.50.227) with storage
+  under `/data/freeroam/x17/`; audit payloads carry the operator identity
+  (`rich`); vault persistence decisions belong to the gateway. The legacy
+  MissPi (192.168.50.179) allowlist entries were removed Sep 30, 2026.
 
 ## 13. Extension Roadmap
 
