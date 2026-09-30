@@ -7,7 +7,7 @@
 | **Target host** | Alienware X17 — Windows 11, NVIDIA GPU (CUDA) |
 | **Runtime model** | Native Python process (**not** containerized — requires mic, webcam, screen capture, GPU, and Qt GUI access) |
 | **Gateway** | Polaris Mainframe — `http://192.168.50.51:8082` (LAN, IP-allowlisted) |
-| **Codebase** | 10 source files (9 Python + requirements), 2,663 Python lines + this blueprint |
+| **Codebase** | 12 Python files + requirements.txt — 2,971 Python lines (incl. Phase D probes) + `crash_query.ps1` diagnostic + this blueprint |
 
 ---
 
@@ -107,15 +107,19 @@ provides five capabilities:
 
 | File | Lines | Role |
 |---|---:|---|
-| `lgi.py` | 631 | Entry point + orchestrator: `LGIConfig`, `LGIApp`, queue drain, voice routing, vision/webcam turns, audit routing, gesture dispatch |
-| `hud_ui.py` | 259 | Frameless always-on-top PyQt6 HUD (MIC/CAM/SUP/POL LEDs, exchange, alert banner, buttons) |
+| `lgi.py` | 669 | Entry point + orchestrator: `LGIConfig`, `LGIApp`, queue drain, voice routing, vision/webcam turns, audit routing, gesture dispatch + pythonw console guard & `sys.excepthook` (§6.6) |
+| `hud_ui.py` | 303 | Frameless always-on-top PyQt6 HUD (MIC/CAM/SUP/POL LEDs, exchange, alert banner, buttons) |
 | `audio_stt.py` | 232 | Continuous open-mic listener: energy VAD + Silero VAD + faster-whisper transcription |
-| `audio_tts.py` | 260 | Local Kokoro TTS worker (CUDA, 24 kHz, chunked, interruptible playback) |
+| `audio_tts.py` | 303 | Local Kokoro TTS worker (CUDA, 24 kHz, chunked, interruptible playback) + `_trace` diagnostic tee w/ 1 MB cap (§6.3) |
 | `screen_capture.py` | 177 | Rolling DXcam "dashcam" (1 FPS ring buffer, mss fallback) → on-demand JPEG + OCR |
 | `webcam_perception.py` | 574 | Continuous webcam perception (v1.2): shared camera owner, FaceMesh attention, Hands gestures, YOLOv8n+ByteTrack tracking, socketio spatial reporter |
 | `local_vlm.py` | 99 | Webcam-analyze VLM client (Ollama `polaris-ai:latest`, single-flight, never raises) |
 | `vision_supervisor.py` | 244 | Periodic desktop-context audit loop (sensors → gateway verdict; attention-gated) |
 | `gateway_client.py` | 187 | Thread-safe JSON HTTP client for the Polaris gateway (retry/backoff, never raises) |
+| `dep_probe.py` | 58 | Dependency self-check (runbook step 10) — imports the full declared stack, prints versions, exit 1 on hard failure |
+| `tts_probe.py` | 84 | Phase D diagnostic: kokoro import + synthesis probe → wav/log in `%TEMP%` (kept after the Sep 30 cleanup) |
+| `sd_play_probe.py` | 41 | Phase D diagnostic: sounddevice device enumeration + one-shot tone play |
+| `crash_query.ps1` | 18 | Phase D diagnostic: last pythonw Application-Error + WER crash events with faulting module (§11 watchlist) |
 | `requirements.txt` | 47 | Dependency manifest + Windows prerequisites |
 | `LGI.md` | — | This blueprint |
 
@@ -309,7 +313,7 @@ continuations on isolated utterances.
 
 > **Sole voice host (Oct 2026):** under the text-only mainframe directive, X17 is the ecosystem's only Kokoro TTS / Faster-Whisper STT host — the Polaris Gateway performs zero audio processing (voice routes deleted, audio libraries stripped from the gateway image).
 
-Local Kokoro pipeline (`lang_code='a'`, default voice `af_heart`, speed 1.2×,
+Local Kokoro pipeline (`lang_code='a'`, default voice `bf_emma`, speed 1.2×,
 24 kHz) with chunked generation and `sounddevice` playback on the `lgi-tts`
 daemon thread. **Non-blocking `speak(text)`**; a generation counter makes
 `stop()` interrupt playback mid-chunk within a ~20 ms poll window.
@@ -324,6 +328,16 @@ daemon thread. **Non-blocking `speak(text)`**; a generation counter makes
   1,500 chars.
 * Status callback states: `ready` / `speaking` / `idle` / `error`.
 * API: `start()`, `speak(text)`, `stop()`, `shutdown()`, `is_speaking`.
+* **`_trace` diagnostic tee (added Sep 30, 2026 — made permanent, decision
+  closed Sep 30, 2026)** — every lifecycle point (construct, enqueue,
+  worker-ready, device introspection, `sd.play` dispatch / success /
+  failure) is appended to `%TEMP%\lgi_tts_log.txt`. This tee is what cracked
+  the silent-voice case (§10 item 11) and is kept permanently as the
+  first-read triage surface. **Size cap:** the file never exceeds ~1 MB
+  (`TRACE_MAX_BYTES = 1_000_000` in `audio_tts.py`) — when the cap is
+  exceeded the next write reopens the file in mode `"w"`, restarting the log
+  in place (truncate-on-open: no rename, no pruning; the tee still never
+  raises).
 ### 6.4 `vision_supervisor.py` — `VisionSupervisor(thread)`
 
 Fixed-interval audit loop (default 30 s, floor 5 s) that sleeps in 250 ms
@@ -396,6 +410,20 @@ auto-positioned top-right with 24 px margins, **drag anywhere** to reposition.
 * `_on_tts_state` — optional ducking: `speaking` pauses STT; `idle` / `ready` /
   `error` resume it unless the user muted the mic (`_mic_muted_by_user`).
 * `main()` — `QApplication`, `lgi.start()`, `app.exec()`, `finally` shutdown.
+* **Console guard (runs first, before heavy imports)** — under `pythonw.exe`
+  (the "LGI AutoStart" Scheduled Task) `sys.stdout`/`sys.stderr` are `None`;
+  any library logging to stdout during import (huggingface_hub's
+  unauthenticated-request warning, inside the kokoro import chain) raises
+  `Cannot log to objects of type 'NoneType'` and the import dies — the TTS
+  worker exited silently on **every console-less boot**, regardless of output
+  device (the device switch was a red herring). `lgi.py` redirects both
+  streams to `%TEMP%\lgi_console.log` (append) when they are `None` —
+  validated live: `worker ready pipeline=cuda`.
+* **Custom `sys.excepthook`** — PyQt6 kills the whole process via qFatal
+  (`Qt6Core.dll` 0xc0000409) when an uncaught Python exception reaches a Qt
+  slot (observed on the supervisor-alert path). The hook logs the traceback
+  and returns, so LGI survives the abort; tracebacks land in
+  `%TEMP%\lgi_console.log`.
 ### 6.7 `webcam_perception.py` — `WebcamPerception(thread)` + `SpatialReporter`
 
 The v1.2 "Her Seeing Me" stack — the X17 replaces MissPi as the sole spatial
@@ -516,7 +544,7 @@ All settings have safe defaults; every env var is read once at launch by
 | `LGI_VLM_MODEL` | `polaris-ai:latest` | vision model for webcam-analyze turns |
 | `LGI_VLM_TIMEOUT` | `90` | seconds per webcam-analyze vision pass |
 
-Non-env config (edit the `LGIConfig` defaults): `tts_voice` (`af_heart`),
+Non-env config (edit the `LGIConfig` defaults): `tts_voice` (`bf_emma`),
 `tts_speed` (1.2), `hud_opacity` (0.94), `speak_responses` (True),
 `hotkey_audit` (`ctrl+shift+s`), `hotkey_mic` (`ctrl+shift+m`),
 `alert_led_hold_s` (60.0).
@@ -587,6 +615,28 @@ native desktop access.
     `requirements.txt`) without touching the UI:
     `ssh rbuit@192.168.50.227 "C:/Users/rbuit/AppData/Local/Python/bin/python.exe -c \"import socketio, cv2, mediapipe, ultralytics, faster_whisper, kokoro, PyQt6; print('LGI deps OK')\""`.
 
+11. **Console-less boot & diagnostics (Sep 30, 2026)** — the auto-start task
+    runs `pythonw.exe` (no console): `sys.stdout`/`sys.stderr` are `None`.
+    Historically this killed the kokoro import chain silently
+    (huggingface_hub stdout warning) — voice dead with zero symptoms, while
+    every device-side probe passed. `lgi.py` now carries the console guard
+    (§6.6). Live diagnostic surfaces:
+    * `%TEMP%\lgi_console.log` — boot stdout/stderr + excepthook tracebacks
+    * `%TEMP%\lgi_tts_log.txt` — TTS `_trace` tee (§6.3)
+    * `D:\LGI\crash_query.ps1` — Windows Error Reporting dump query for the
+      flaky native crash class (§11 watchlist)
+    **Triage rule:** voice dead → read `lgi_tts_log.txt` first. A missing
+    `worker ready` line means the boot killed the worker (check
+    `lgi_console.log`), not the output device.
+12. **Probe cleanup (Sep 30, 2026)** — the four probe Scheduled Tasks
+    (`X17-TTS-PlayTest`, `X17-SD-PlayTest`, `X17-SD-PlayTestW`,
+    `X17-KOKORO-W`) were deleted and probe artifacts purged from `%TEMP%`
+    (`lgi_tts_probe.wav`, `tts_probe_w.log`, `sd_probe_out.txt`,
+    `sd_probe_out_w.txt`). Kept as Phase D diagnostics (repo + `D:\LGI`):
+    `tts_probe.py`, `sd_play_probe.py`, `crash_query.ps1`, `dep_probe.py`.
+    The live instrumentation (`lgi_console.log`, `lgi_tts_log.txt`) and the
+    `LGI AutoStart` task are untouched.
+
 ## 11. Failure Modes & Degradation
 
 | Failure | Behavior |
@@ -613,6 +663,10 @@ native desktop access.
 | Vision LLM offline / image rejected | gateway ladder falls back to `mistral-large-3:675b-cloud`; total failure → HUD error line, no crash |
 | Kokoro pipeline init failure | TTS disabled (`error` state); HUD still shows chat replies |
 | TTS playback error | chunk aborted; worker continues with the next request |
+| Kokoro import dies under pythonw (**defused**) | console guard maps stdout/stderr → `%TEMP%\lgi_console.log` (§6.6); unguarded, the import chain dies silently on every console-less boot — voice dead, no error anywhere |
+| Uncaught exception in a Qt slot (**defused**) | PyQt6 qFatal aborts the process (`Qt6Core.dll` 0xc0000409); custom `sys.excepthook` (§6.6) logs to `lgi_console.log` and survives |
+| Flaky native boot crash (**WATCH**) | `cudnn64_9.dll` 0xc0000409 / `ntdll` heap corruption 0xc0000374 during STT init — intermittent GPU-stack class, unrelated to TTS; two occurrences Sep 30, 2026: +2 s boot death and 18:22:31 (newest WER record), each followed by a healthy relaunch; probe artifacts + capped tee unaffected. Recovery: `schtasks /run /tn "LGI AutoStart"`; forensics: `crash_query.ps1` |
+| Alert-slot exception (**WATCH**) | an exception preceded the Sep 30 18:03:21 abort whose full traceback was not captured (ruled stale/interleaved); if it recurs the traceback now lands in `%TEMP%\lgi_console.log` |
 
 ## 12. Security & Privacy
 
@@ -670,4 +724,12 @@ native desktop access.
 extended for v1.2 "Her Seeing Me" on 2026-09-27 — line counts, the 28-knob
 config table, thread/queue inventory, module APIs, and payload contracts
 re-verified against the code (webcam-analyze round trip live-tested against
-`polaris-ai:latest` over Ollama `/api/generate`).*
+`polaris-ai:latest` over Ollama `/api/generate`).
+
+*Sep 30, 2026 (voice-restoration hardening)* — pythonw console guard +
+custom `sys.excepthook` shipped in `lgi.py`; `_trace` diagnostic tee in
+`audio_tts.py` — made permanent, 1 MB truncate-on-open cap. Root cause of the silent-voice era: kokoro import death under
+console-less boots (`sys.stdout = None`, huggingface_hub stdout warning) —
+the output-device switch was a red herring. TTS chain live-verified end to
+end (Kokoro CUDA → sounddevice → headphones) and operator-heard E2E. Probe
+tasks deleted (§10 item 12); defused + watchlist entries in §11.*
