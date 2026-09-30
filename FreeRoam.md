@@ -9,6 +9,7 @@ A covert, edge-compute architecture for real-time AI-assisted situational awaren
 - **Voice engine self-heal (v1.0.4):** the RedMagic's on-device speech engine can wedge mid-capture — no callbacks at all — and every later press hears nothing until a reboot (paired with a device-level logd freeze on this ROM). `finalizeAndDeliver()` now counts silent captures (`SILENT_CAPTURES_BEFORE_ENGINE_HOP`) and arms an engine hop: the next PTT press is served by the **system (cloud) recognizer** instead of the wedged on-device engine; a successful capture clears the hop and returns to the private engine. A wedge costs one failed press, no reboot.
 - **Android build signing (v1.0.4):** the debug keystore is committed (`android/app/freeroam-debug.keystore`) and pinned into the build image (`freeroam/Dockerfile` → `/root/.android/debug.keystore`) so every build signs identically and `adb install -r` upgrades in place — fresh images previously generated a new key, forcing uninstall + reinstall. Note: ADB-over-TCP (5555) does not survive phone reboots on this ROM — re-arm via USB once; the gateway's watchdog (`run_gateway.sh`) reconnects automatically.
 - **Reboot-proof wireless ADB (v1.0.4 era):** Wireless debugging is ON (`Settings.Global adb_wifi_enabled=1`) and the Mainframe is paired (pair GUID `adb-FY24031100E6-71NED1`). The Mainframe runs Google platform-tools v37 at `~/platform-tools/adb` (v37 has mDNS + TLS pairing; the distro adb v28 on `/usr/bin` does not). After any phone reboot the device re-appears automatically on the host as `adb-FY24031100E6-71NED1._adb-tls-connect._tcp` in `adb devices` — **no USB, no `adb tcpip`, no manual step**. From Polaris's sandbox (whose ADB is Debian 34, no mDNS): reach the phone through `ssh_execute` on the Mainframe → `~/platform-tools/adb`; the container's `:5555` bridge remains the quick path whenever TCP mode is armed.
+- **Matt's phone wireless ADB (field-verified Sep 30, 2026):** Matt's RedMagic 9 (`FY24031100BE`, Android 16) is Wi-Fi-connected the same way: wireless debugging is ON and the Mainframe is TLS-paired (pair GUID **`adb-FY24031100BE-usU8h8`**, pairing is persistent across reboots). The phone serves two endpoints: legacy tcpip adbd on **5555** (static, currently armed — resets on reboot like Rich's) and the paired TLS wireless-debugging endpoint on a **dynamic** port (33679 at pairing time — re-discover with `adb mdns services`, connect to the `_adb-tls-connect` entry). One-touch recovery with no USB: `freeroam/polaris-gateway/rearm_phones.sh` (`--tcpip` also tries re-arming 5555 over the wireless transport; it re-asserts Matt's ACCESS_FINE_LOCATION grant and relaunches the app if it died). The gateway container's `run_gateway.sh` watchdog now arms **both** phones on 5555 (Rich 192.168.50.42 | Matt 192.168.50.98); from the sandbox only that 5555 path exists (Debian adb v28, no mDNS/TLS).
 - **Watch tether (v3.3; play-state model v3.5.2):** the AVRCP media session stays listed with a silent 60 s seed track. While she speaks the seed loops silently (session PLAYING — the watch's pause button stops her speech and starts the mic); the moment her voice drains, the seed parks PAUSED and her full reply takes the track title with a fresh mediaId (a "new track" the Garmin reliably refreshes and marquee-scrolls) — so the watch ends every exchange showing her reply and a PLAY button, ready for push-to-talk
 - **Strict text-chat loop:** speak or type → send → gateway → LLM → response → spoken aloud (v2.9 hardening: text in / text out only — voice capture just feeds the same text pipeline)
 - **On-device speech pipeline (v3.1; text-only since v3.6):** `KokoroTTS` → `StreamingTtsPlayer` direct PCM playback (no audio artifacts); `PolarisAudioStore` remains only for the legacy WAV sweep
@@ -105,6 +106,8 @@ The FreeRoam Android app **automatically detects user identity** from the device
 - **Same APK for all users** — identity is derived automatically from the LAN IP
 - Each user maintains a separate server-side chat history and gateway profile
 - Unknown devices fall back to the Rich identity client-side (logged, not blocked)
+- **Reinstall fragility (field-verified Sep 30, 2026):** runtime grants survive `adb install -r` but NOT uninstall/reinstall or "clear data" — a reset APK boots with `Dashboard` → identity falls back to `Rich` until ACCESS_FINE_LOCATION is granted and the app restarts. Repair:
+  `adb -s 192.168.50.98:5555 shell pm grant com.freeroam.tactical android.permission.ACCESS_FINE_LOCATION && adb -s 192.168.50.98:5555 shell am force-stop com.freeroam.tactical ; adb -s 192.168.50.98:5555 shell monkey -p com.freeroam.tactical -c android.intent.category.LAUNCHER 1` — or just run `rearm_phones.sh`, which self-heals this (grant re-assert + relaunch) whenever Matt's phone is reachable.
 
 ### 2. Walkie-Talkie Flow (v3.3)
 
@@ -365,6 +368,11 @@ ls -lh app/build/outputs/apk/debug/app-debug.apk   # ~234 MB (unminified debug)
 
 # Install to the attached Redmagic, over the existing install
 adb install -r app/build/outputs/apk/debug/app-debug.apk
+
+# Matt's phone over WiFi (no cable): 5555 while tcpip is armed, or the mDNS
+# TLS serial after a phone reboot (run rearm_phones.sh to re-establish)
+#   ~/platform-tools/adb -s 192.168.50.98:5555 install -r app/build/outputs/apk/debug/app-debug.apk
+# -r preserves the ACCESS_FINE_LOCATION grant; verify the identity chip shows Matt
 ```
 
 - **Toolchain:** Gradle 9.2 wrapper, `compileSdk 35`, JDK 17 toolchain, `minSdk 26`, `targetSdk 34`
