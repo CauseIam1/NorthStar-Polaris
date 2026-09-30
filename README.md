@@ -1,5 +1,4 @@
 # Project North Star
- ![Radar_both_wallets](Radar_both_wallets.png)
 ## Hardware & System Profiles
 Primary Core Server (The Mainframe)
 The central intelligence and routing hub of the network.
@@ -33,6 +32,7 @@ The mobile field-compute device for remote situational awareness — a fully on-
 | Local AI Models | Android SpeechRecognizer STT (on-device engine preferred; 2.5 s end-of-speech patience — segment continuation keeps the mic hot through mid-sentence pauses) + Kokoro-82M TTS via sherpa-onnx (fully on-device, no cloud TTS; bf_emma default voice, streamed PCM straight into a persistent 24 kHz AudioTrack — text-only, no WAV artifacts) |
 | Primary Role | Live comms with Polaris (screen-locked Garmin watch push-to-talk; playback survives screen-lock), WireGuard tunneling, and burst transmission to the Dell Mainframe |
 
+ ![Radar_both_wallets](Radar_both_wallets.png)
 # Project North Star - Trading Bot & Holodeck Dashboard
 **Document Status: PRODUCTION ACTIVE**
 This section of the document defines the overarching vision, theoretical framework, and operational rules of the ecosystem. It serves as the architectural north star for the private AMM matrix and North Star Holodeck dashboard.
