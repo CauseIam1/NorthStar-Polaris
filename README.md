@@ -195,23 +195,23 @@ Polaris Gateway serves as the centralized intelligence, communication, and syste
 Services & Port Mapping
 | Port | Service Name | Technical Role & Core Functionality |
 |---|---|---|
-| 8082 (→5000) | Main Polaris Gateway | Conversational AI (polaris-ai:latest → glm-5.3-flash cloud proxy via Ollama; North Star-primacy system prompt + server-side tool calling via the 15-tool dispatcher), persistent session tracking, dual-memory retrieval (SQLite + ChromaDB + Memory Vault), Kokoro TTS suite (/api/tts, /api/tts-stream, /api/tts/cancel, /api/voice-command, /api/voice-health), Memory Vault REST (/api/memory/vault/*), transcript distillation (/api/distill), supervisor audit API (/api/supervisor/*), real-time task lifecycle tracking (/api/status/tasks), and Socket.IO broadcasting (status-room task events + per-IP live chat rooms) — served under gunicorn+gevent (custom `GeventWebSocketWorker`; werkzeug fallback). |
+| 8082 (→5000) | Main Polaris Gateway | Conversational AI (polaris-ai:latest → glm-5.3-flash cloud proxy via Ollama; North Star-primacy system prompt + server-side tool calling via the 17-tool dispatcher), persistent session tracking, dual-memory retrieval (SQLite + ChromaDB + Memory Vault), strictly text-only - voice retired from the mainframe (Kokoro/Whisper run on the X17 LGI and Android on-device), Memory Vault REST (/api/memory/vault/*), transcript distillation (/api/distill), supervisor audit API (/api/supervisor/*), real-time task lifecycle tracking (/api/status/tasks), and Socket.IO broadcasting (status-room task events + per-IP live chat rooms) — served under gunicorn+gevent (custom `GeventWebSocketWorker`; werkzeug fallback). |
 | 8083 (→5001) | Burst Receiver | High-throughput telemetry logging, burst storage rotation, vision analysis endpoints (/api/vision/*), and Channel State Information (CSI) radar vector processing for X/Y/Z motion tracking; broadcasts radar_update / vision_update to dashboards. |
-| 7007 | Sandbox Gateway | Isolated web terminal and SSH operations controller targeting MissPi (192.168.50.179) with execution logs and history caching. |
+| 7007 | Sandbox Gateway | Isolated web terminal and SSH operations controller targeting the X17 / LGI (192.168.50.227, user rbuit, workdir D:/LGI) with execution logs and history caching. |
 
-Active AI Tools & Autonomous Schemas (exactly 15 tools routed by the execute_tool_call() dispatcher; unknown names return a structured Unknown-tool error)
+Active AI Tools & Autonomous Schemas (exactly 17 tools routed by the execute_tool_call() dispatcher; unknown names return a structured Unknown-tool error)
  * File Operations (file_tools.py): read_doc, write_doc, append_doc, list_docs, delete_doc.
  * Playground & Sandbox (playground_tools.py): publish_web_asset, list_playground_files, run_sandbox_code, spawn_service, stop_service, list_services.
- * Remote Management (ssh_tools.py): ssh_execute, ssh_check_connectivity (targeting MissPi at 192.168.50.179).
+ * Remote Management (ssh_tools.py): ssh_execute, ssh_check_connectivity, ssh_deploy_file, ssh_fetch_file (targeting the X17 at 192.168.50.227 by default, user rbuit, LGI workdir D:/LGI).
  * Notifications (gotify_service.py): send_gotify_notification.
  * Memory Vault (memory_tools.py): memory_vault_query — read-only semantic search over Polaris's distilled long-term Memory Vault from chat; vault writes come only from the distillation pipeline or the operator.
  * Supervisor Audit: server-side REST blueprint under /api/supervisor/* (screen/clipboard triage) — separate from the LLM tool dispatcher.
- * Not wired into the running gateway: system_tools.py (Docker control, QuestDB/Rippled health, emergency bot shutdown), livecharts_tools.py (dashboard modifications), www_tools.py (web assets) — standalone legacy modules imported only by the non-launched freeroam_gateway.py entrypoint. (ssh_upload_file is a dead name — no schema, no dispatcher branch.)
+ * Not wired into the running gateway: system_tools.py (Docker control, QuestDB/Rippled health, emergency bot shutdown), livecharts_tools.py (dashboard modifications), www_tools.py (web assets) — standalone legacy modules imported only by the non-launched freeroam_gateway.py entrypoint. (The legacy ssh_upload_file name was superseded by ssh_deploy_file / ssh_fetch_file.)
 Connected Hardware & Infrastructure
  * Dell Mainframe (192.168.50.51): Host server running Docker container instances, Ollama LLM (11434), QuestDB (8812), and WireGuard host (10.20.30.1).
- * Alienware X17 Laptop: Operator command console rendering North Star Holodeck 3D dashboards; hosts the LGI Executive Supervisor Client (native HUD/voice/vision cockpit over the gateway on :8082, with spatial telemetry to the Burst Receiver on :8083).
+ * Alienware X17 Laptop: Operator command console rendering North Star Holodeck 3D dashboards; hosts the LGI Executive Supervisor Client (native HUD/voice/vision cockpit over the gateway on :8082, with spatial telemetry to the Burst Receiver on :8083). The X17 is also the ecosystem's sole Kokoro TTS / Faster-Whisper STT host (text-only mainframe directive, Oct 2026).
  * Red Magic 9 Pro: Tactical field device running the FreeRoam Android app (v3.6 streaming voice comms, deployed Sep 28, 2026) — Bose Ultra Open Earbuds coms, Even G2 Smart Glasses with ring, and Garmin watch push-to-talk over the always-on AVRCP MediaSession keep-alive tether. ADB-over-WiFi listener at `192.168.50.42:5555` — the gateway container is an authorized ADB client (trusted keypair mounted) and drives the phone from Polaris tooling; `com.freeroam.tactical` is doze-whitelisted so its 3 s chat poll survives screen-off.
- * MissPi / Mini Pi (192.168.50.179): Remote Raspberry Pi 5 edge compute unit.
+ * Alienware X17 / LGI (192.168.50.227): Windows 11 edge unit — Polaris's eyes and ears (LGI webcam perception, device 'x17-webcam'; SSH user rbuit, LGI workdir D:/LGI). (MissPi / Mini Pi at 192.168.50.179 was fully decommissioned Sep 30, 2026.)
 
 # Polaris Gateway & Cross-Device Communications
 
@@ -231,9 +231,9 @@ POLARIS GATEWAY CONTAINER
 │   │  Main Polaris Gateway (Flask+IO)   │   │  Sandbox Gateway    │    │
 │   │  Host 8082 → internal 5000         │   │  Port 7007          │    │
 │   │  - Ollama LLM: polaris-ai:latest   │   │  - Remote SSH Exec  │    │
-│   │    → glm-5.3-flash (cloud, 1M ctx) │   │  - MissPi Control   │    │
+│   │    → glm-5.3-flash (cloud, 1M ctx) │   │  - X17 LGI Control  │    │
 │   │ - SQLite + ChromaDB + Memory Vault │   └──────────┬──────────┘    │
-│   │  - Kokoro TTS (/api/tts*)          │              │               │
+│   │  - Text-only (voice on X17)        │              │               │
 │   │ - Vault REST (/api/memory/vault/*) │              │               │
 │   │  - Distill (/api/distill*)         │              │               │
 │   │  - Supervisor audit (/api/superv.) │              │               │
@@ -252,9 +252,9 @@ POLARIS GATEWAY CONTAINER
 
 | Port | Endpoint | Purpose |
 | :--- | :--- | :--- |
-| **8082** (→5000) | `/api/chat`, `/api/chat/history*`, `/api/history/<user_id>`, `/api/status*`, `/api/session/status`, `/api/memory/stats`, `/api/memory/vault/*`, `/api/tts`, `/api/tts-stream`, `/api/tts/cancel`, `/api/voice-command`, `/api/voice-health`, `/api/distill`, `/api/distill/auto`, `/api/supervisor/*`, `/socket.io/` (status_room) | AI Chat (polaris-ai:latest → glm-5.3-flash cloud proxy), persistent memory retrieval (SQLite + ChromaDB + Memory Vault), Memory Vault REST, Kokoro 24kHz neural TTS + streaming, transcript distillation, supervisor audit API, real-time task lifecycle feed |
-| **8083** (→5001) | `/api/burst`, `/api/telemetry`, `/api/radar/ingest`, `/api/vision/*`, Socket.IO (`radar_update`, `vision_update`) | Spatial telemetry ingestion, high-volume sensor feeds, WiFi CSI stream processing, vision analysis broadcasts |
-| **7007** | `/api/ssh/execute`, `/api/ssh/check`, `/api/ssh/history*`, `/api/status`, `/` | Dedicated SSH management console targeting MissPi (`192.168.50.179`) |
+| **8082** (→5000) | `/api/chat`, `/api/chat/history*`, `/api/history/<user_id>`, `/api/status*`, `/api/session/status`, `/api/memory/stats`, `/api/memory/vault/*`, `/api/distill`, `/api/distill/auto`, `/api/supervisor/*`, `/socket.io/` (status_room) | AI Chat (polaris-ai:latest → glm-5.3-flash cloud proxy), persistent memory retrieval (SQLite + ChromaDB + Memory Vault), Memory Vault REST, strictly text-only (voice retired - synthesis lives on X17 LGI / Android on-device), transcript distillation, supervisor audit API, real-time task lifecycle feed |
+| **8083** (→5001) | `/api/burst`, `/api/telemetry`, `/api/radar/ingest`, `/api/vision/*`, Socket.IO (`radar_update`, `vision_update`) | Spatial telemetry ingestion, high-volume sensor feeds, motion-radar stream processing, vision analysis broadcasts |
+| **7007** | `/api/ssh/execute`, `/api/ssh/check`, `/api/ssh/history*`, `/api/status`, `/` | Dedicated SSH management console targeting the X17 / LGI (`192.168.50.227`) |
 
 ---
 
@@ -271,7 +271,7 @@ Polaris tracks environment geometry and target positioning through a high-precis
             └────────────────┐ ┌──────────────┘
 ▼ ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                     MissPi (RPi 5 Edge Hub)                             │
+│                     X17 LGI (Edge Hub)                                  │
 │  - 1x Integrated POE ESP32 RD03 mmWave Radar                            │
 │  - WiFi Channel State Information (CSI) Amplitude Stream                │
 │  - Camera Module running YOLO Real-Time Object Detection                │
@@ -321,19 +321,19 @@ Polaris maintains full situational awareness when the operator is out in the fie
 
 ## 4. System Administration & Autonomous Tooling
 
-Polaris acts as an autonomous administrator via its 15-tool dispatcher (`execute_tool_call()`, `port 8082`) — file operations, playground/sandbox publishing and service spawning, remote SSH execution, Gotify notifications, and read-only Memory Vault queries. All tool schemas are injected into the LLM system prompt at request time; unknown tool names return `{"success": false, "error": "Unknown tool: …"}`.
+Polaris acts as an autonomous administrator via its 17-tool dispatcher (`execute_tool_call()`, `port 8082`) — file operations, playground/sandbox publishing and service spawning, remote SSH execution, Gotify notifications, and read-only Memory Vault queries. All tool schemas are injected into the LLM system prompt at request time; unknown tool names return `{"success": false, "error": "Unknown tool: …"}`.
 
-### Execution Tools Registry (15 tools)
+### Execution Tools Registry (17 tools)
 * **File Operations (`file_tools.py`)**: `read_doc`, `write_doc`, `append_doc`, `list_docs`, `delete_doc`.
 * **Playground & Sandbox (`playground_tools.py`)**: `publish_web_asset`, `list_playground_files`, `run_sandbox_code`, `spawn_service`, `stop_service`, `list_services` — AI-generated web apps served by the Polaris Playground container (:8090).
-* **Remote Execution (`ssh_tools.py`)**: `ssh_execute`, `ssh_check_connectivity` — targeting MissPi (`192.168.50.179`).
-* **Phone Control (gateway-side ADB bridge, via `run_sandbox_code` bash)**: the gateway container ships `adb` (Dockerfile apt) with the phone's trusted RSA keypair mounted read-only (`/home/causeiam/.android → /root/.android:ro`) and `run_gateway.sh` arms a 30 s auto-reconnect watchdog against the phone's adbd at `192.168.50.42:5555`. Bash through `run_sandbox_code` can therefore drive the phone directly (launch apps via `am start`, dumpsys state, input events) — no new dispatcher tool; the 15-tool registry is unchanged. First exercised Sep 28, 2026: Polaris-side ADB launched Google Maps on the phone. Post-reboot fallback: Wireless Debugging (TLS, pair GUID `adb-FY24031100E6-71NED1`) auto-reconnects on the Mainframe via `~/platform-tools/adb` (v37) — reachable from tools through `ssh_execute` on the host when the container's `:5555` channel is not armed.
+* **Remote Execution (`ssh_tools.py`)**: `ssh_execute`, `ssh_check_connectivity`, `ssh_deploy_file`, `ssh_fetch_file` — targeting the X17 / LGI (`192.168.50.227`, user `rbuit`, workdir `D:/LGI`) by default.
+* **Phone Control (gateway-side ADB bridge, via `run_sandbox_code` bash)**: the gateway container ships `adb` (Dockerfile apt) with the phone's trusted RSA keypair mounted read-only (`/home/causeiam/.android → /root/.android:ro`) and `run_gateway.sh` arms a 30 s auto-reconnect watchdog against the phone's adbd at `192.168.50.42:5555`. Bash through `run_sandbox_code` can therefore drive the phone directly (launch apps via `am start`, dumpsys state, input events) — no new dispatcher tool; the 17-tool registry is unchanged. First exercised Sep 28, 2026: Polaris-side ADB launched Google Maps on the phone. Post-reboot fallback: Wireless Debugging (TLS, pair GUID `adb-FY24031100E6-71NED1`) auto-reconnects on the Mainframe via `~/platform-tools/adb` (v37) — reachable from tools through `ssh_execute` on the host when the container's `:5555` channel is not armed.
 * **Gotify Service (`gotify_service.py`)**: `send_gotify_notification` — asynchronous priority alerts and automated hourly status digests formatted as Markdown tables.
 * **Memory (`memory_tools.py`)**: `memory_vault_query` — strictly read-only semantic search over the Memory Vault.
 * **Not wired into the running gateway**: `system_tools.py` (Docker container control, QuestDB/Rippled health, emergency trading bot shutdown), `livecharts_tools.py` (dashboard modifications), `www_tools.py` (web assets) — standalone legacy modules imported only by the non-launched `freeroam_gateway.py` entrypoint.
 
 ### Operator Identity Detection
-Identity resolves in order: explicit `user_id` in the request body (the dashboard sends `rich`/`matt` on the user's behalf) → client IP (`X-Forwarded-For` first hop, else `remote_addr`). Known IPs: `.42` = Rich, `.98` = Matt, `.51` = the Mainframe itself (persona **Operator**), `.227` = dashboard test machine (persona **Dashboard**), `.179` = MissPi (mapped to **Rich**). Traffic from Docker-bridge ranges (`172.17.*`–`172.20.*`, NAT-masked) falls back to the default **Dashboard** persona. Identity selects the persona, profile/behavior/lists/transcript file paths, session partitioning, and chat history — maintaining separate persistent memory partitions in SQLite and ChromaDB.
+Identity resolves in order: explicit `user_id` in the request body (the dashboard sends `rich`/`matt` on the user's behalf) → client IP (`X-Forwarded-For` first hop, else `remote_addr`). Known IPs: `.42` = Rich, `.98` = Matt, `.51` = the Mainframe itself (persona **Operator**), `.227` = dashboard test machine (persona **Dashboard**, also the X17 / LGI host). (The historical `.179` = MissPi alias ended when MissPi was decommissioned Sep 30, 2026.) Traffic from Docker-bridge ranges (`172.17.*`–`172.20.*`, NAT-masked) falls back to the default **Dashboard** persona. Identity selects the persona, profile/behavior/lists/transcript file paths, session partitioning, and chat history — maintaining separate persistent memory partitions in SQLite and ChromaDB.
 
 ### Memory Vault (Long-Term Distilled Knowledge)
 * **Markdown Store**: Obsidian-style vault at `/mnt/containers/freeroam/polaris-gateway/memory-vault` (bind-mounted to `/polaris_memory_vault` in-container), organized into six categories: **00-Core** (protected doctrine), **01-Architecture**, **02-User**, **03-Lessons**, **04-Journal** (append-only daily files), **05-Attachments**.
@@ -347,8 +347,8 @@ Identity resolves in order: explicit `user_id` in the request body (the dashboar
 ## 5. System Prompt, Tool Pipeline & Response Hygiene (North Star Primacy)
 
 ### System Prompt & Persona
-* **North Star primacy (fixed precedence)**: `build_system_prompt()` renders Project North Star as Polaris's primary domain and the default subject of any ambiguous request — Miss Pi, Gotify, and the Memory Vault are supporting infrastructure, routed to only when explicitly asked or clearly relevant.
-* **Prompt blocks, in order**: persona header → **[PROJECT NORTH STAR - YOUR PRIMARY ECOSYSTEM]** (Trading Matrix with operator-owned AMM mesh + multi-hop arbitrage loops, Zero-Fiat Rule, Wallet Topology, tech stack, SCOPE primacy statement) → [REMOTE INFRASTRUCTURE - MISS PI] → [SSH REACHABILITY DOCTRINE] → [REMOTE PROCESS MANAGEMENT RULES] (incl. HONEST REPORTING) → tool schemas + **10 North Star-flavored few-shot examples** + [TOOL EXECUTION RULE] → Gotify / Memory Vault blocks → [KNOWN FACTS ABOUT {USER}] + CORE DIRECTIVES (TTS-ready, no emojis, ≤3 sentences unless asked).
+* **North Star primacy (fixed precedence)**: `build_system_prompt()` renders Project North Star as Polaris's primary domain and the default subject of any ambiguous request — the X17 (LGI), Gotify, and the Memory Vault are supporting infrastructure, routed to only when explicitly asked or clearly relevant.
+* **Prompt blocks, in order**: persona header → **[PROJECT NORTH STAR - YOUR PRIMARY ECOSYSTEM]** (Trading Matrix with operator-owned AMM mesh + multi-hop arbitrage loops, Zero-Fiat Rule, Wallet Topology, tech stack, SCOPE primacy statement) → [REMOTE INFRASTRUCTURE - X17 (LGI)] → [SSH REACHABILITY DOCTRINE] → [REMOTE PROCESS MANAGEMENT RULES] (incl. HONEST REPORTING) → tool schemas + **10 North Star-flavored few-shot examples** + [TOOL EXECUTION RULE] → Gotify / Memory Vault blocks → [KNOWN FACTS ABOUT {USER}] + CORE DIRECTIVES (TTS-ready, no emojis, ≤3 sentences unless asked).
 * **Context guardrail**: the prompt renders once; if it exceeds `SYSTEM_PROMPT_TOKEN_GUARD` (**6500** est. tokens), the conversation window shrinks stepwise (`WINDOW_SHRINK_STEPS = [6, 3, 0]` exchanges) and re-renders — persona, KNOWN FACTS, and directives survive, only the oldest exchanges are sacrificed (`[GUARDRAIL]` log line). The guard stays deliberately conservative under the model's 32768 `num_ctx` (v3.4, raised from 8192): the extra headroom is reserved for tool-result document pages plus the user turn, reply, and thinking — not for history bloat.
 * **Modelfile mirror**: `polaris-ai:latest` is defined by `freeroam/polaris-gateway/Modelfile` — `FROM glm-5.3-flash:cloud`, temperature 0.7, `num_ctx 32768` (v3.4), carrying the same North Star primacy block in its SYSTEM text. Modelfile edits apply via `ollama create polaris-ai:latest -f <Modelfile>` — an instant manifest swap on the running Ollama container, no restart.
 
@@ -362,7 +362,7 @@ Identity resolves in order: explicit `user_id` in the request body (the dashboar
 
 ### Deployment & Ops Notes
 * **Baked-source policy**: neither the gateway nor the dashboard bind-mounts source — every code change requires an image rebuild + container restart (`docker compose build polaris-gateway && docker compose up -d --no-deps polaris-gateway`). `--no-deps` guarantees linked services (`ollama`, `questdb`) are never recreated. The ADB keypair mount is compose-managed, so rebuilds re-apply it automatically.
-* **Production WSGI (gunicorn + gevent, Sep 28, 2026)**: the chat gateway (:5000) runs under `gunicorn -k gunicorn_gevent_ws.GeventWebSocketWorker -w 1` — a small custom worker (`freeroam/polaris-gateway/gunicorn_gevent_ws.py`) serving `gevent.pywsgi` with `WebSocketHandler`, required because the stock `gevent` worker omits `wsgi.websocket` from the environ and every engineio websocket upgrade fails ("The gevent-websocket server is not configured appropriately"). `SocketIO` selects `async_mode='gevent'` under gunicorn (clean WS session close — no werkzeug 500-spam artifacts) and `threading` in direct-run mode; a failed gevent init falls back to threading. Single worker by design (Flask-SocketIO multi-worker needs a message queue). Knobs: `GUNICORN_TIMEOUT` (default 120 s); `--access-logfile -` keeps per-request lines greppable in `docker logs`. Boot-time systems (Memory Vault watchdog, node-cleanup loop, voice warmup) start via `_start_background_systems()` — invoked on the gunicorn import path and from `__main__` alike.
+* **Production WSGI (gunicorn + gevent, Sep 28, 2026)**: the chat gateway (:5000) runs under `gunicorn -k gunicorn_gevent_ws.GeventWebSocketWorker -w 1` — a small custom worker (`freeroam/polaris-gateway/gunicorn_gevent_ws.py`) serving `gevent.pywsgi` with `WebSocketHandler`, required because the stock `gevent` worker omits `wsgi.websocket` from the environ and every engineio websocket upgrade fails ("The gevent-websocket server is not configured appropriately"). `SocketIO` selects `async_mode='gevent'` under gunicorn (clean WS session close — no werkzeug 500-spam artifacts) and `threading` in direct-run mode; a failed gevent init falls back to threading. Single worker by design (Flask-SocketIO multi-worker needs a message queue). Knobs: `GUNICORN_TIMEOUT` (default 120 s); `--access-logfile -` keeps per-request lines greppable in `docker logs`. Boot-time systems (Memory Vault watchdog, node-cleanup loop) start via `_start_background_systems()` — invoked on the gunicorn import path and from `__main__` alike.
 * **Transcripts**: read inside the container — `docker exec polaris-gateway tail -50 /data/freeroam/operator/operator_transcripts.log` (the bind mount is root-owned, not host-readable).
 * **Pipeline evidence**: `docker logs polaris-gateway 2>&1 | grep -E 'DEBUG|Tool Execution|GUARDRAIL'` surfaces stripper, parser, and guardrail activity.
 
@@ -388,7 +388,7 @@ The **Polaris Dashboard** (v4.3 Holodeck Split-View) is the central visual HUD a
 │                                                                             │
 │   ┌─────────────────────────────────────────────────────────────────────┐   │
 │   │                    TOP SECTION - CHAT & DIAGNOSTICS                 │   │
-│   │  - User Switcher (RICH / MATT)      - Audio TTS Toggle (Kokoro)     │   │
+│   │  - User Switcher (RICH / MATT)      - Audio TTS Toggle (inert)      │   │
 │   │  - Reverse-Chronological Chat Feed   - HUD Dropdowns (Session/      │   │
 │   │  - Real-Time Message Sync (3s)        Memory/CSI Radar)             │   │
 │   └─────────────────────────────────────────────────────────────────────┘   │
@@ -406,7 +406,7 @@ The **Polaris Dashboard** (v4.3 Holodeck Split-View) is the central visual HUD a
 | Service Endpoint | Protocol / Port | Technical Purpose |
 | :--- | :--- | :--- |
 | **Dashboard UI** | `http://192.168.50.51:7000/` | Main user HUD, chat interface, and Holodeck panel. |
-| **Gateway & Task Feed** | `ws://192.168.50.51:8082/` | Task feed event streaming (`status_room` room) & Kokoro TTS audio synthesis. |
+| **Gateway & Task Feed** | `ws://192.168.50.51:8082/` | Task feed event streaming (`status_room` room) (TTS retired - text-only mainframe directive, Oct 2026). |
 | **CSI Radar Stream** | `ws://192.168.50.51:8083/` | Subcarrier spatial tracking & micro-Doppler radar feeds. |
 | **Memory Vault Tab** | Gateway REST: `http://192.168.50.51:8082/api/memory/vault/*` | Holodeck vault browser/editor: browse, read, edit, hybrid search, index status. The `:7007` sandbox REST API remains available to Polaris tooling. |
 
@@ -418,7 +418,7 @@ The dashboard uses a resizable split-view layout to ensure chat interaction neve
 
 ### Top Section: Interactive Chat & HUD Bar
 * **User Identity Switching**: Toggle identity profiles between **RICH** and **MATT** to load isolated memory partitions and conversation histories.
-* **Pinned Transmit Bar**: Pinned message input bar with built-in toggle for 24kHz **Kokoro Text-to-Speech (TTS)** responses.
+* **Pinned Transmit Bar**: Pinned message input bar with AUDIO RESPONSE toggle (defaults off) - synthesis backend retired (text-only mainframe directive, Oct 2026).
 * **Reverse-Chronological Exchange Feed**: Message exchanges display newest-first directly beneath the transmit bar, auto-pruning to maintain performance while auto-syncing every 3 seconds across field devices.
 
 ### Bottom Section: Real-Time Operations Panel
@@ -533,3 +533,4 @@ The **Looking Glass Interface (LGI)** is the operator's floating HUD and voice c
 * **Webcam-analyze frames**: one 640px q50 JPEG per camera-directed turn goes to the configured Ollama endpoint (default the Mainframe's cloud-proxied `polaris-ai:latest`; point `LGI_VLM_URL` at a local Ollama to keep analyze frames fully on-device).
 * **Sensor minimisation**: `LGI_SCREENSHOT=0` / `LGI_WEBCAM=0` strip images from audits entirely.
 * Clipboard is change-gated: stale contents are never re-sent.
+
