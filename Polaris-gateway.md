@@ -10,7 +10,7 @@ Polaris is the private AI assistant and system hub running on the Dell Mainframe
 
 | Component | Container | Role |
 |---|---|---|
-| **Polaris Gateway** | `polaris-gateway` | One container, three Flask services: Chat Gateway (AI chat, tool calling, memory, voice, desktop-vision turns), Burst Receiver (telemetry, CSI radar, vision stream), Sandbox Gateway (Mini Pi SSH console) |
+| **Polaris Gateway** | `polaris-gateway` | One container, three Flask services: Chat Gateway (AI chat, tool calling, memory, desktop-vision turns), Burst Receiver (telemetry, motion-radar, vision stream), Sandbox Gateway (X17 SSH console) |
 | **Polaris Dashboard** | `polaris-dashboard` | Static nginx page (`Polaris_page.html`) serving the Holodeck split-view chat UI |
 | Ollama | `ollama` | Local LLM inference — `polaris-ai:latest` (chat), `nomic-embed-text` (embeddings) |
 | Gotify | `gotify` | Push notification delivery (consumed by the AI as a tool) |
@@ -18,9 +18,9 @@ Polaris is the private AI assistant and system hub running on the Dell Mainframe
 | LiveCharts | `livecharts` | XRPL asset monitoring page (nginx) on :7001 |
 | WireGuard | `freeroam-wireguard` | Secure tunnel for the FreeRoam Android client (UDP 51820) |
 
-**Operator identity** is resolved in order: explicit `user_id` in the request body (the dashboard sends `rich`/`matt` on the user's behalf) → client IP (`X-Forwarded-For` first hop, else `remote_addr`). Known IPs: `RICH_IP = 192.168.50.42` (Rich), `MATT_IP = 192.168.50.98` (Matt), `OPERATOR_IP = 192.168.50.51` (the Mainframe itself — persona "Operator", operator data files), `DASHBOARD_TEST_IP = 192.168.50.227`, `MISS_PI_IP = 192.168.50.179` (mapped to Rich). Traffic from Docker bridge ranges (`172.17.*`–`172.20.*` — NAT-masked) falls back to `DEFAULT_USER_CONFIG` (persona "Dashboard", operator data files). Identity selects the user name, profile/behavior/lists/transcript paths, session partitioning, and chat history.
+**Operator identity** is resolved in order: explicit `user_id` in the request body (the dashboard sends `rich`/`matt` on the user's behalf) → client IP (`X-Forwarded-For` first hop, else `remote_addr`). Known IPs: `RICH_IP = 192.168.50.42` (Rich), `MATT_IP = 192.168.50.98` (Matt), `OPERATOR_IP = 192.168.50.51` (the Mainframe itself — persona "Operator", operator data files), `DASHBOARD_TEST_IP = 192.168.50.227` (also the X17 / LGI host). WireGuard tunnel aliases (Sep 29, 2026): `MATT_WG_TUNNEL_IP = 10.20.30.2` (Matt's phone inside the `freeroam-wireguard` tunnel) and `DOCKER_HAIRPIN_IP = 172.18.0.1` (the docker-proxy source the tunnel's MASQUERADE'd traffic arrives as after hairpinning the published ports) → both mapped to Matt's data files in Burst Receiver + Chat Gateway. (The historical MissPi→Rich alias ended when MissPi was decommissioned on Sep 30, 2026.) Traffic from other Docker bridge ranges (`172.17.*`–`172.20.*` — NAT-masked) falls back to `DEFAULT_USER_CONFIG` (persona "Dashboard", operator data files). Identity selects the user name, profile/behavior/lists/transcript paths, session partitioning, and chat history.
 
-**Edge device:** MissPi / Mini Pi (Raspberry Pi 5) at `192.168.50.179`, user `minipi`, workdir `/home/minipi/miss-pi`. **Retired as the spatial sensor (Sep 27, 2026):** the X17's LGI webcam perception stack (LGI v1.2 "Her Seeing Me", device `x17-webcam`) now provides the `radar_motion` + `vision_frame` feeds into the Burst Receiver — the WiFi CSI radar and YOLO camera stream duties moved to the X17; the X17's desktop-vision chat turns (screenshot + OCR on `POST /api/chat`) are answered by the Chat Gateway's vision LLM ladder (§3.1). MissPi remains online for SSH command execution (Sandbox Gateway target) only.
+**Edge device:** the X17 (Windows 11) at `192.168.50.227`, allowlisted as `DASHBOARD_TEST_IP`, user `rbuit`, LGI workdir `D:/LGI`. Runs the LGI v1.2 "Her Seeing Me" stack (device `x17-webcam`): it provides the `radar_motion` + `vision_frame` feeds into the Burst Receiver (socketio — the IP-ungated path), and its desktop-vision chat turns (screenshot + OCR on `POST /api/chat`) are answered by the Chat Gateway's vision LLM ladder (§3.1). It is also the SSH target for every remote-execution tool (user `rbuit`, cmd.exe default shell — Windows command guidance is baked into the tool schemas and the system prompt). **MissPi / Mini Pi (Raspberry Pi 5) at `192.168.50.179` was fully decommissioned on Sep 30, 2026:** its `ALLOWED_IPS` / `USER_CONFIG` entries were removed from both gateways and from the `ssh_tools.py` defaults; its old storage (`/data/freeroam/misspi/`) is preserved untouched for history.
 
 ---
 
@@ -28,9 +28,9 @@ Polaris is the private AI assistant and system hub running on the Dell Mainframe
 
 | Host Port | Container Port | Service | Purpose |
 |---|---|---|---|
-| 8082 | 5000 | Chat Gateway | AI chat, voice (TTS/STT), memory, tool calling, task tracking, Socket.IO |
+| 8082 | 5000 | Chat Gateway | AI chat (strictly text-only), memory, tool calling, task tracking, Socket.IO |
 | 8083 | 5001 | Burst Receiver | Burst/telemetry ingestion, CSI radar, vision stream, Socket.IO |
-| 7007 | 7007 | Sandbox Gateway | Mini Pi SSH web console |
+| 7007 | 7007 | Sandbox Gateway | X17 (LGI) SSH web console |
 | 7000 | 80 | Polaris Dashboard | Holodeck UI (nginx) |
 | 8090 | 80 | Polaris Playground | AI-generated web app server |
 | 7001 | 80 | LiveCharts | XRPL asset monitor |
@@ -43,9 +43,9 @@ All services live on the external Docker network `docker-containers_default`.
 
 ## 3. Chat Gateway (host 8082 → container 5000)
 
-**File:** `polaris_continuous_learning_gateway.py` — Flask + Flask-SocketIO app powered by Ollama, with tool calling, dual-tier memory, a voice pipeline, session management, and heuristics. Blueprints registered: `memory_bp` (Memory Vault), `supervisor_bp` (Supervisor Audit).
+**File:** `polaris_continuous_learning_gateway.py` — Flask + Flask-SocketIO app powered by Ollama, with tool calling, dual-tier memory, session management, and heuristics. The gateway is strictly text-only - no voice pipeline exists on the mainframe. Blueprints registered: `memory_bp` (Memory Vault), `supervisor_bp` (Supervisor Audit).
 
-**Production WSGI server (gunicorn + gevent).** Served by `gunicorn -k gunicorn_gevent_ws.GeventWebSocketWorker -w 1` from `run_gateway.sh` (a tiny local worker subclass that serves `gevent.pywsgi` with `WebSocketHandler` — the stock `gevent` worker lacks `wsgi.websocket` in the environ, which makes every engineio websocket upgrade fail with "The gevent-websocket server is not configured appropriately"; werkzeug threading mode remains the direct-run fallback). `SocketIO` picks `async_mode='gevent'` when running under gunicorn (clean WS session close — no werkzeug 500-spam artifacts) and `threading` otherwise; a failed gevent init falls back to threading. Single worker by design — Flask-SocketIO multi-worker requires a message queue (Redis). Boot-time systems (Memory Vault watchdog, node-cleanup loop, voice warmup) start via `_start_background_systems()`, invoked on import under gunicorn and from `__main__` otherwise. Knobs: `GUNICORN_TIMEOUT` (default 120 s); `--access-logfile -` keeps per-request lines greppable in `docker logs`.
+**Production WSGI server (gunicorn + gevent).** Served by `gunicorn -k gunicorn_gevent_ws.GeventWebSocketWorker -w 1` from `run_gateway.sh` (a tiny local worker subclass that serves `gevent.pywsgi` with `WebSocketHandler` — the stock `gevent` worker lacks `wsgi.websocket` in the environ, which makes every engineio websocket upgrade fail with "The gevent-websocket server is not configured appropriately"; werkzeug threading mode remains the direct-run fallback). `SocketIO` picks `async_mode='gevent'` when running under gunicorn (clean WS session close — no werkzeug 500-spam artifacts) and `threading` otherwise; a failed gevent init falls back to threading. Single worker by design — Flask-SocketIO multi-worker requires a message queue (Redis). Boot-time systems (Memory Vault watchdog, node-cleanup loop) start via `_start_background_systems()`, invoked on import under gunicorn and from `__main__` otherwise. Knobs: `GUNICORN_TIMEOUT` (default 120 s); `--access-logfile -` keeps per-request lines greppable in `docker logs`.
 
 ### 3.1 REST API
 
@@ -63,14 +63,7 @@ All services live on the external Docker network `docker-containers_default`.
 
 **Desktop-vision turns (Polaris Desktop Vision, LGI v1.2).** A `POST /api/chat` request carrying `image_base64` (desktop screenshot JPEG) — optionally `ocr_text` (≤4000 chars) and `active_window` — bypasses the tool pipeline and is answered by the vision LLM ladder: `VISION_LLM_MODEL` (`polaris-ai:latest`) first, then `VISION_LLM_FALLBACK_MODEL` (`mistral-large-3:675b-cloud`) on any failure — degrade, never fabricate. The image rides Ollama's multimodal `images` field (`OLLAMA_URL`, default `http://ollama:11434/api/generate` via Docker DNS) with a desktop-context prompt built from the active-window title and OCR text; timeout is 120 s (`VISION_LLM_TIMEOUT`, hardcoded). Total ladder failure raises into the standard 503 error path. The reply envelope adds `vision: true` + `vision_model` (raw-HTTP surface only — clients render via `chat_message` as usual).
 
-**Voice**
-| Method | Route | Purpose |
-|---|---|---|
-| POST | `/api/tts` | Text → speech (Kokoro, WAV blob) |
-| POST | `/api/tts-stream` | Chunked streaming synthesis variant |
-| POST | `/api/tts/cancel` | Abort in-flight synthesis |
-| POST | `/api/voice-command` | Full chain: audio → STT → LLM → TTS → WAV |
-| GET | `/api/voice-health` | Voice subsystem status |
+**Voice - retired (text-only mainframe directive, Oct 2026).** The gateway performs zero audio processing: no models, no STT/TTS code, no audio libraries. The five voice routes (`/api/tts`, `/api/tts-stream`, `/api/tts/cancel`, `/api/voice-command`, `/api/voice-health`) were deleted MissPi-style; requests now 404. Kokoro TTS + Faster-Whisper STT run locally on the X17 (LGI `audio_tts.py` / `audio_stt.py`; LGI HUD chat is text-only with the gateway) and fully on-device in the FreeRoam Android app. The dashboard AUDIO RESPONSE checkbox defaults off.
 
 **Status & Tasks**
 | Method | Route | Purpose |
@@ -154,7 +147,6 @@ There is **no** `request_history` handler and no `chat_history` emit — history
 | `USER_DATA_DIR` | `/data/freeroam` | Bursts, telemetry, profiles, chat history |
 | `LIVECHARTS_DIR` | `/livecharts` | LiveCharts mount |
 | `WWW_DIR` | `/playground/www` | Playground web root |
-| `KOKORO_*` | see §6 | TTS configuration |
 | `GOTIFY_*` | see §10 | Notification configuration |
 
 ### 3.4 Cross-Device Chat History
@@ -181,15 +173,15 @@ One server-side history store per operator identity (`rich` / `matt`), shared by
 
 ### 3.5 System Prompt & Persona (North Star primacy)
 
-`build_system_prompt()` assembles the per-request system prompt. Subject-matter precedence is fixed: **Project North Star is Polaris's primary domain and the default subject of any ambiguous request** — Miss Pi, Gotify, and the Memory Vault are supporting infrastructure, routed to only when explicitly asked or clearly relevant.
+`build_system_prompt()` assembles the per-request system prompt. Subject-matter precedence is fixed: **Project North Star is Polaris's primary domain and the default subject of any ambiguous request** — the X17 (LGI), Gotify, and the Memory Vault are supporting infrastructure, routed to only when explicitly asked or clearly relevant.
 
 Prompt blocks, in order:
 - Persona header — witty, bubbly AI companion for `{user_name}`
 - **[PROJECT NORTH STAR - YOUR PRIMARY ECOSYSTEM]** — Trading Matrix (operator-owned AMM mesh, 0.05% fee, multi-hop arbitrage loops, LP-fee recycling), Zero-Fiat Rule (stablecoins are transient pass-through settlement nodes only; capital retained in XRP + whitelisted meme coins), Wallet Topology (COLD_WALLET / BOT MPT_RPN hot wallet / TRADING_WALLET), Stack (Java engines, QuestDB :8812 with the epoch / `java.sql.Timestamp` binding rule, local rippled `http://rippled:5005`, North Star Holodeck dashboard), SCOPE (the primacy statement above)
-- [REMOTE INFRASTRUCTURE - MISS PI] — SSH facts (user `minipi`, workdir `/home/minipi/miss-pi/`, key scripts, `behavior_lib.json`)
+- [REMOTE INFRASTRUCTURE - X17 (LGI)] — SSH facts (user `rbuit`, LGI workdir `D:/LGI`, Windows cmd.exe guidance, `ssh_deploy_file`/`ssh_fetch_file` vault deployment)
 - [SSH REACHABILITY DOCTRINE] — ON/OFF answers, not failures; connection failures map to exact phrasings (OFF / ON but SSH down / auth failure / ON and responding)
 - [REMOTE PROCESS MANAGEMENT RULES] — the `[b]racket` pgrep/pkill trick, nohup + redirect daemon starts, PID-stability proof, JSON-safe command strings, and HONEST REPORTING (never claim an outcome in the same response that performs the action)
-- Tool schemas + **[TOOL USAGE EXAMPLES]** — 10 few-shot pairs covering the full tool surface, all North Star / trading-infrastructure flavored (XRP dashboard publishing, playground listing, sandbox code, trading notes, Miss Pi uptime/connectivity, arbitrage journaling, trading-bot + XRP-price Gotify alerts, QuestDB-lessons vault query) + [TOOL EXECUTION RULE] (the JSON tool-call contract)
+- Tool schemas + **[TOOL USAGE EXAMPLES]** — 10 few-shot pairs covering the full tool surface, all North Star / trading-infrastructure flavored (XRP dashboard publishing, playground listing, sandbox code, trading notes, X17 uptime/connectivity, arbitrage journaling, trading-bot + XRP-price Gotify alerts, QuestDB-lessons vault query) + [TOOL EXECUTION RULE] (the JSON tool-call contract)
 - [PUSH NOTIFICATIONS - GOTIFY] · [MEMORY VAULT - YOUR LONG-TERM MEMORY] (read-only `memory_vault_query`; the vault is written only by the learning process)
 - [KNOWN FACTS ABOUT {USER}] — memory context + behavior lib + heuristics + session window + tools block · CORE DIRECTIVES (vibe; TTS-ready, no emojis; ≤3 sentences unless asked; personalize; follow heuristics; use recent context)
 
@@ -235,7 +227,7 @@ Payload: `{ "csi_vector": [...], "timestamp"?, "device_id"?, "metadata"? }`
 | `vision_connect` | client → server | Server emits `vision_ack` and joins client into room `vision_dashboard` |
 | `vision_frame` | client → server | Live camera frame → processed → broadcast as `vision_update` (room `vision_dashboard`) |
 | `vision_disconnect` | client → server | End vision stream |
-| `radar_motion` | client → server | Pre-processed motion event (timestamp / confidence / intensity / duration). Legacy source: Miss Pi CSI radar daemon. Current source: X17 webcam perception (LGI SpatialReporter @ 1 Hz, `device_id: x17-webcam`) sending explicit `x` / `y` / `z` / `velocity` — real coordinates pass through untouched into the `radar_update` broadcast (`people_count` also rides the payload but is not currently forwarded); coordinate-less legacy payloads keep the intensity-driven simulation |
+| `radar_motion` | client → server | Pre-processed motion event (timestamp / confidence / intensity / duration). Historical source: Miss Pi CSI radar daemon (decommissioned Sep 30, 2026). Current source: X17 webcam perception (LGI SpatialReporter @ 1 Hz, `device_id: x17-webcam`) sending explicit `x` / `y` / `z` / `velocity` — real coordinates pass through untouched into the `radar_update` broadcast (`people_count` also rides the payload but is not currently forwarded); coordinate-less legacy payloads keep the intensity-driven simulation |
 | `join_vision` | client → server | Join room `vision_dashboard`; server replies with `vision_history` (last 10 detections) |
 
 ### Configuration
@@ -244,8 +236,8 @@ All values are hardcoded constants in `burst_receiver.py` — the service reads 
 
 | Constant | Value | Purpose |
 |---|---|---|
-| `ALLOWED_IPS` | `192.168.50.42` / `.98` / `.51` / `.179` | LAN-only REST guard (Rich / Matt / Operator / MissPi). Loopback and Docker-bridge source IPs are denied — Mainframe-shell and `docker exec` curls get 403 by design (§13) |
-| `USER_CONFIG` | per allowed IP | Per-user storage: `burst_dir` = `/data/freeroam/<user>/bursts`, `telemetry_log` = `/data/freeroam/<user>/telemetry.log`; MissPi flagged `radar_source: True` |
+| `ALLOWED_IPS` | `192.168.50.42` / `.98` / `.51` / `.227` + `10.20.30.2` / `172.18.0.1` | LAN-only REST guard (Rich / Matt / Operator / X17-LGI) + Matt's WireGuard tunnel IP and the docker-proxy hairpin IP (both alias to Matt's storage). Loopback and other Docker-bridge source IPs are denied — `docker exec` curls get 403 by design (§13); host-shell curls keep the host IP (source-preserved DNAT path, = `HOST_IP`); WireGuard tunnel traffic arrives as `172.18.0.1` (docker-proxy hairpin) |
+| `USER_CONFIG` | per allowed IP | Per-user storage: `burst_dir` = `/data/freeroam/<user>/bursts`, `telemetry_log` = `/data/freeroam/<user>/telemetry.log`; the X17 (LGI) flagged `radar_source: True` (storage under `/data/freeroam/x17/`); `10.20.30.2` and `172.18.0.1` alias entries resolve to Matt's storage |
 | `MAX_BURST_AGE_HOURS` | `24` | Burst retention before rotation |
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama endpoint for `/api/vision/*` — **does not resolve inside the container** (verified: `ollama:11434` answers 200, `localhost:11434` refuses), so the image-analysis endpoints are dead in-container; the live vision paths are the Socket.IO feeds and the Chat Gateway's Desktop Vision ladder (§3.1) |
 | `VISION_MODEL` | `mistral-large-3:675b-cloud` | Ollama model for `/api/vision/*` analysis |
@@ -256,7 +248,7 @@ All values are hardcoded constants in `burst_receiver.py` — the service reads 
 
 ## 5. Sandbox Gateway (host 7007)
 
-**File:** `sandbox_gateway.py` — web terminal for SSH operations against the Mini Pi.
+**File:** `sandbox_gateway.py` — web terminal for SSH operations against the X17 (LGI).
 
 ### REST API
 | Method | Route | Purpose |
@@ -269,50 +261,22 @@ All values are hardcoded constants in `burst_receiver.py` — the service reads 
 | GET | `/api/status` | Gateway status |
 
 ### SSH Target
-- Host: `192.168.50.179` (`MINI_PI_HOST`), user `minipi`, workdir `/home/minipi/miss-pi` (`MINI_PI_WORKDIR`)
+- Host: `192.168.50.227` (env `LGI_X17_HOST`, legacy `MINI_PI_HOST` name still honored), user `rbuit`, workdir `D:/LGI` (env `LGI_X17_WORKDIR`, legacy `MINI_PI_WORKDIR` still honored)
 - Key: `/root/.ssh/id_ed25519` (mounted read-only from `/home/causeiam/.ssh`)
 - Options: `StrictHostKeyChecking=no`, `BatchMode=yes`, `IdentitiesOnly=yes`
 
 ---
 
-## 6. Voice Pipeline (Kokoro TTS + Faster-Whisper STT)
+## 6. Voice - Retired from the Mainframe (Text-Only Directive, Oct 2026)
 
-All voice processing is server-side in the Chat Gateway. A global `VOICE_PROCESSING_LOCK` (threading.Lock) serializes synthesis and transcription; voice models lazy-load on first use.
+The Polaris Gateway performs **zero audio processing**. Per operator directive the Dell mainframe is a strictly text-only node: chat is a pure text back-and-forth, and no STT/TTS code, libraries, or model files exist anywhere in the gateway image. `faster-whisper`, `kokoro`, and `soundfile` were stripped from the Dockerfile and `requirements.txt`; the `VOICE_ENABLED` gate, `VOICE_PROCESSING_LOCK`, Whisper/Kokoro lazy-loaders, boot warmup thread, `ACTIVE_TTS_STREAMS` bookkeeping, and all five voice routes (→ `/api/tts`, `/api/tts-stream`, `/api/tts/cancel`, `/api/voice-command`, `/api/voice-health`) were excised from `polaris_continuous_learning_gateway.py` (MissPi-style deletion: unknown routes now return 404). The `kokoro-cache` bind mount and `KOKORO_CACHE_DIR` / `VOICE_ENABLED` env entries were removed from `docker-compose.yml`.
 
-**Startup warmup:** a daemon thread starts at gateway boot, waits 20 seconds, then calls `synthesize_speech("Voice warmup complete.")` to prime the Kokoro pipeline so the first real message is not a cold start. Warmup failure is logged and falls back to lazy loading.
+**Where voice lives now:**
+- **X17 (LGI) - sole Kokoro/Whisper host in the ecosystem.** `audio_stt.py` (open-mic VAD + Faster-Whisper) and `audio_tts.py` (Kokoro, CUDA, 24 kHz) run locally on the laptop; the LGI HUD chat exchanges **text only** with the gateway.
+- **FreeRoam Android app - fully on-device.** Android SpeechRecognizer STT + Kokoro-82M TTS (sherpa-onnx, bf_emma) with streamed 24 kHz PCM; only text rides the tunnel.
+- **Polaris Dashboard - text-only surface.** The AUDIO RESPONSE checkbox defaults off; with the synthesis routes gone, any manual ▶ attempt simply 404s (the console handler logs once, benign).
 
-### POST /api/tts
-Request:
-```json
-{ "text": "The system is operating normally.", "voice": "af_emma", "speed": 1.0 }
-```
-(`voice` and `speed` optional — default to `KOKORO_VOICE_NAME` / `KOKORO_SPEED`)
-
-Response `200`: `audio/wav`, 24 kHz, with headers `X-Text-Length`, `X-Voice`, `X-Sample-Rate`, `X-Format`.
-
-Errors: `400` no text · `503` voice processing unavailable (Kokoro not initialized) · `500` synthesis failed.
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `KOKORO_VOICE_NAME` | `af_emma` | Default voice model (`af_emma` resolves to `bf_emma` via `KOKORO_VOICE_ALIASES`) |
-| `KOKORO_SPEED` | `1.0` | Playback speed multiplier |
-| `KOKORO_CACHE_DIR` | `/app/kokoro-cache` | Model weight cache (bind: `/mnt/rippled-data/kokoro-cache`) |
-
-**Per-call voice resolution:** `resolve_kokoro_voice()` maps request names through `KOKORO_VOICE_ALIASES` (`"af_emma"` → `"bf_emma"` — the friendly name is not a Kokoro v1.0 voicepack ID, so it resolves to the real Emma voicepack on every client); any other voicepack ID (e.g. `"af_heart"`) passes through unchanged. Requests without a `voice` field use `KOKORO_VOICE_NAME`.
-
-### Other voice endpoints
-| Route | Purpose |
-|---|---|
-| `POST /api/tts-stream` | Chunked streaming synthesis variant |
-| `POST /api/tts/cancel` | Abort in-flight synthesis |
-| `POST /api/voice-command` | Full voice loop: audio bytes → `transcribe_audio()` (Faster-Whisper) → Ollama LLM → `synthesize_speech()` (Kokoro) → WAV response |
-| `GET /api/voice-health` | Voice subsystem status |
-
-### Dashboard audio playback (client-side queue)
-- The **AUDIO RESPONSE** checkbox gates auto-play of Polaris responses.
-- Auto-played and manually requested audio enter a sequential queue (`ttsQueue`) driven by a single-flight pump (`pumpTTSQueue`): fetch `POST /api/tts` blob → play through one shared `<audio id="ttsPlayer">` element → wait for playback end → next item.
-- Every message bubble has a ▶ button (`toggleMessageAudio(messageId)`): while playing it stops the current item (queue order preserved); while idle it stops anything playing and jumps the clicked message to the front. Manual clicks work regardless of the checkbox.
-- History loads never auto-play; closing a message removes it from the queue; blob object URLs are revoked after playback.
+The system prompt's “TTS-ready” persona directive (§3.5) remains accurate - synthesis happens off-mainframe, so replies stay conversational and speakable.
 
 ---
 
@@ -324,11 +288,11 @@ Dispatcher: `execute_tool_call(tool_name, arguments)`. All tool schemas are inje
 |---|---|---|
 | File operations | `file_tools.py` | `read_doc`, `write_doc`, `append_doc`, `list_docs`, `delete_doc` |
 | Playground | `playground_tools.py` | `publish_web_asset`, `list_playground_files`, `run_sandbox_code`, `spawn_service`, `stop_service`, `list_services` |
-| Remote execution | `ssh_tools.py` | `ssh_execute`, `ssh_check_connectivity` (targets Mini Pi / Miss Pi) |
+| Remote execution | `ssh_tools.py` | `ssh_execute`, `ssh_check_connectivity`, `ssh_deploy_file`, `ssh_fetch_file` (targets the X17 / Mainframe) |
 | Notifications | `gotify_service.py` | `send_gotify_notification` |
 | Memory | `memory_tools.py` | `memory_vault_query` |
 
-Exactly **15 tools** are routed by the `execute_tool_call` dispatcher — the table above is the complete registry; unknown names return `{"success": false, "error": "Unknown tool: …"}`. (`ssh_upload_file` appears in older docs but has no schema and no dispatcher branch — dead name.) The same 15-name union — every schema registry plus the 11 legacy inline-call names, via `_known_tool_names()` — drives the stripper's known-tool check (§3.2, point 4).
+Exactly **17 tools** are routed by the `execute_tool_call` dispatcher — the table above is the complete registry; unknown names return `{"success": false, "error": "Unknown tool: …"}`. The SSH group ships four tools: `ssh_execute`, `ssh_check_connectivity`, and **`ssh_deploy_file` / `ssh_fetch_file`** (scp-based vault→X17 push and X17→vault pull; the legacy `ssh_upload_file` name is superseded). The same 17-name union — every schema registry plus the 11 legacy inline-call names, via `_known_tool_names()` — drives the stripper's known-tool check (§3.2, point 4).
 
 **Routing policy (in system prompt):** notification requests → Gotify tool (never SSH); remote command execution → SSH tools; file operations → file tools.
 
@@ -400,7 +364,7 @@ Static page `Polaris_page.html` baked into an `nginx:alpine` image as `index.htm
 ### Client connections (from `Polaris_page.html`)
 | Target | Use |
 |---|---|
-| `http://<host>:8082` | Chat REST (`/api/chat`, `/api/history/<user>`, `/api/memory/stats`, `/api/tts*`, `/api/chat/history`) + Memory Vault REST (`/api/memory/vault/*`) |
+| `http://<host>:8082` | Chat REST (`/api/chat`, `/api/history/<user>`, `/api/memory/stats`, `/api/chat/history`) + Memory Vault REST (`/api/memory/vault/*`) |
 | `ws://<host>:8082` (Socket.IO) | Chat `message` events + task feed |
 | `<host>:8083` (Socket.IO) | CSI radar + vision stream |
 
@@ -430,8 +394,7 @@ polaris-gateway:
     - /mnt/containers/freeroam/polaris-gateway/state:/data/state:rw   # SQLite state DB (memory_db, §8) — survives recreates
     - /mnt/containers/freeroam/livecharts:/livecharts:rw
     - /mnt/containers/freeroam/polaris-gateway/playground/www:/playground/www:rw
-    - /mnt/rippled-data/kokoro-cache:/app/kokoro-cache                # Kokoro model cache (sdc)
-    - /home/causeiam/.ssh:/root/.ssh:ro                               # SSH keys (Mini Pi / Miss Pi)
+    - /home/causeiam/.ssh:/root/.ssh:ro                               # SSH keys (X17 / Mainframe)
     - /var/run/docker.sock:/var/run/docker.sock                       # container management
   environment:
     - GATEWAY_PORT=5000
@@ -440,7 +403,6 @@ polaris-gateway:
     - VISION_LLM_MODEL=polaris-ai:latest                        # Desktop Vision (LGI vision turns): primary image model
     - VISION_LLM_FALLBACK_MODEL=mistral-large-3:675b-cloud     # proven vision-capable fallback if the primary fails
     - DATA_DIR=/app/data
-    - KOKORO_CACHE_DIR=/app/kokoro-cache
     - USER_DATA_DIR=/data/freeroam
     - LIVECHARTS_DIR=/livecharts
     - WWW_DIR=/playground/www
@@ -479,7 +441,7 @@ Network: external `docker-containers_default`. Named volumes: `polaris_data`, `o
 
 ### Image contents
 
-**Gateway Dockerfile** — `python:3.11-slim`; apt: `openssh-client`, `docker.io`, `curl`, `procps`, `adb`; pip: flask / flask-cors / flask-socketio / requests / python-socketio / watchdog / gunicorn / gevent / gevent-websocket, `chromadb==0.5.23`, `faster-whisper`, `kokoro`, `soundfile`; `COPY *.py *.json *.html run_gateway.sh sandbox_static/`; `EXPOSE 5000 5001 7007`; `CMD ["./run_gateway.sh"]`.
+**Gateway Dockerfile** — `python:3.11-slim`; apt: `openssh-client`, `docker.io`, `curl`, `procps`, `adb`; pip: flask / flask-cors / flask-socketio / requests / python-socketio / watchdog / gunicorn / gevent / gevent-websocket, `chromadb==0.5.23` (voice libraries NOT installed - text-only mainframe directive); `COPY *.py *.json *.html run_gateway.sh sandbox_static/`; `EXPOSE 5000 5001 7007`; `CMD ["./run_gateway.sh"]`.
 
 **Entrypoint `run_gateway.sh`** — arms an ADB watchdog for the operator phone (`192.168.50.42:5555`, 30 s auto-reconnect) and sets `PYTHONUNBUFFERED=1`, then launches `burst_receiver.py` (:5001), the chat gateway under `gunicorn -k gunicorn_gevent_ws.GeventWebSocketWorker -w 1 --access-logfile -` (:5000; custom worker = gevent.pywsgi + WebSocketHandler so engineio websocket upgrades work; auto-falls back to the werkzeug direct-run path if gunicorn/gevent is missing), and `sandbox_gateway.py` (:7007) as background processes and waits on all three PIDs.
 
@@ -514,7 +476,7 @@ curl -X POST http://localhost:11434/api/pull -d '{"name": "nomic-embed-text"}'
 curl -s http://localhost:8082/api/status             # Chat Gateway
 curl -s http://localhost:8082/api/status/tasks       # Task tracking
 curl -s http://localhost:8082/api/memory/vault/stats # Memory Vault (documents + indexed entries)
-curl -s http://localhost:8083/api/status             # Burst Receiver — 403 from the Mainframe shell by design (LAN-only guard sees Docker-bridge IP); call from an allowlisted device (Rich/Matt/MissPi) or use docker logs polaris-gateway
+curl -s http://localhost:8083/api/status             # Burst Receiver — 403 from the Mainframe shell by design (LAN-only guard sees Docker-bridge IP); call from an allowlisted device (Rich/Matt/X17) or use docker logs polaris-gateway
 docker exec polaris-gateway curl -s --max-time 4 http://ollama:11434/api/tags   # in-container Ollama path used by chat + Desktop Vision ladder (http://ollama:11434)
 curl -s http://localhost:7007/api/status             # Sandbox Gateway
 curl -s http://localhost:7000/ | head -5             # Dashboard page
@@ -530,9 +492,9 @@ docker logs polaris-gateway 2>&1 | grep -E 'DEBUG|Tool Execution|GUARDRAIL'     
 
 | File | Role |
 |---|---|
-| `polaris_continuous_learning_gateway.py` | Chat Gateway app — HTTP + Socket.IO, North Star-primacy system prompt (§3.5), tool calling + stripper pipeline (§3.2), voice pipeline, sessions, heuristics, task tracking, Desktop Vision turns (§3.1) |
+| `polaris_continuous_learning_gateway.py` | Chat Gateway app — HTTP + Socket.IO, North Star-primacy system prompt (§3.5), tool calling + stripper pipeline (§3.2), sessions, heuristics, task tracking, Desktop Vision turns (§3.1) |
 | `burst_receiver.py` | Burst Receiver app — telemetry ingestion, CSI radar, vision stream (X17 webcam `vision_frame` / `radar_motion` feeds), Ollama image-analysis endpoints (in-container Ollama URL dead, §4 Configuration) |
-| `sandbox_gateway.py` | Sandbox Gateway app — Mini Pi SSH console |
+| `sandbox_gateway.py` | Sandbox Gateway app — X17 (LGI) SSH console |
 | `run_gateway.sh` | Container entrypoint — launches all three services |
 | `memory_db.py` | SQLite memory layer (users, messages, heuristics, profiles, lists) — DB at `/data/state/polaris_state.db`, host-persisted via the §12 state bind |
 | `vector_memory.py` | ChromaDB vector layer — embeddings via `nomic-embed-text` |
