@@ -1,6 +1,6 @@
 # Polaris — Current System Reference
 
-Single source of truth for the Polaris AI stack as it currently sits: containers, services, APIs, subsystems, and deployment facts. Scope: `freeroam/polaris-gateway` (gateway) and `freeroam/polaris-dashboard` (dashboard). No history, no debug notes — current architecture only.
+Single source of truth for the Polaris AI stack as it currently sits: containers, services, APIs, subsystems, and deployment facts. Scope: `freeroam/polaris-gateway` (gateway) and `freeroam/polaris-dashboard` (dashboard). No history.
 
 ---
 
@@ -20,7 +20,7 @@ Polaris is the private AI assistant and system hub running on the Dell Mainframe
 
 **Operator identity** resolves from the client IP first (`X-Forwarded-For` first hop, else `remote_addr`); an explicit `user_id` (REST JSON body / GET query string — the dashboard sends `rich`/`matt` on the user's behalf) can then override it, trust-gated by `resolve_config_with_override()`: the caller must first pass the standard IP gate (exact `USER_CONFIG` match or an allowed Docker-bridge prefix) and the requested identity must match a configured user name, otherwise the IP-derived config stands — honored overrides log `[Chat]` / `[Chat History] Identity override: user_id='…' from IP …`. Known IPs: `RICH_IP = 192.168.50.42` (Rich), `MATT_IP = 192.168.50.98` (Matt), `OPERATOR_IP = 192.168.50.51` (the Mainframe itself — persona "Operator", operator data files), `DASHBOARD_TEST_IP = 192.168.50.227` (also the X17 / LGI host). WireGuard tunnel aliases (Sep 29, 2026): `MATT_WG_TUNNEL_IP = 10.20.30.2` (Matt's phone inside the `freeroam-wireguard` tunnel) and `DOCKER_HAIRPIN_IP = 172.18.0.1` (the docker-proxy source the tunnel's MASQUERADE'd traffic arrives as after hairpinning the published ports) → both mapped to Matt's data files in Burst Receiver + Chat Gateway. (The historical MissPi→Rich alias ended when MissPi was decommissioned on Sep 30, 2026.) Traffic from other Docker bridge ranges (`172.17.*`–`172.20.*` — NAT-masked) falls back to `DEFAULT_USER_CONFIG` (persona "Dashboard", operator data files). Identity selects the user name, profile/behavior/lists/transcript paths, session partitioning, and chat history — chat-history keys additionally funnel through `normalize_chat_identity()` (`SHARED_IDENTITY_ALIASES`: `dashboard` → `rich`, `operator` → `rich`), so LGI voice, the dashboard browser, and any Docker-bridge client share one `rich` bucket (§3.4); `matt` stays partitioned.
 
-**Edge device:** the X17 (Windows 11) at `192.168.50.227`, allowlisted as `DASHBOARD_TEST_IP`, user `rbuit`, LGI workdir `D:/LGI`. Runs the LGI v1.2 "Her Seeing Me" stack (device `x17-webcam`): it provides the `radar_motion` + `vision_frame` feeds into the Burst Receiver (socketio — the IP-ungated path), and its desktop-vision chat turns (screenshot + OCR on `POST /api/chat`) are answered by the Chat Gateway's vision LLM ladder (§3.1). It is also the SSH target for every remote-execution tool (user `rbuit`, cmd.exe default shell — Windows command guidance is baked into the tool schemas and the system prompt). **MissPi / Mini Pi (Raspberry Pi 5) at `192.168.50.179` was fully decommissioned on Sep 30, 2026:** its `ALLOWED_IPS` / `USER_CONFIG` entries were removed from both gateways and from the `ssh_tools.py` defaults; its old storage (`/data/freeroam/misspi/`) is preserved untouched for history.
+**Edge device:** the X17 (Windows 11) at `192.168.50.227`, allowlisted as `DASHBOARD_TEST_IP`, user `user`, LGI workdir `D:/LGI`. Runs the LGI v1.2 "Her Seeing Me" stack (device `x17-webcam`): it provides the `radar_motion` + `vision_frame` feeds into the Burst Receiver (socketio — the IP-ungated path), and its desktop-vision chat turns (screenshot + OCR on `POST /api/chat`) are answered by the Chat Gateway's vision LLM ladder (§3.1). It is also the SSH target for every remote-execution tool (user `user`, cmd.exe default shell — Windows command guidance is baked into the tool schemas and the system prompt). **MissPi / Mini Pi (Raspberry Pi 5) at `192.168.50.179` was fully decommissioned on Sep 30, 2026:** its `ALLOWED_IPS` / `USER_CONFIG` entries were removed from both gateways and from the `ssh_tools.py` defaults; its old storage (`/data/freeroam/misspi/`) is preserved untouched for history.
 
 ---
 
@@ -179,7 +179,7 @@ One shared server-side store: every read/write path funnels through `normalize_c
 Prompt blocks, in order:
 - Persona header — witty, bubbly AI companion for `{user_name}`
 - **[PROJECT NORTH STAR - YOUR PRIMARY ECOSYSTEM]** — Trading Matrix (operator-owned AMM mesh, 0.05% fee, multi-hop arbitrage loops, LP-fee recycling), Zero-Fiat Rule (stablecoins are transient pass-through settlement nodes only; capital retained in XRP + whitelisted meme coins), Wallet Topology (COLD_WALLET / BOT MPT_RPN hot wallet / TRADING_WALLET), Stack (Java engines, QuestDB :8812 with the epoch / `java.sql.Timestamp` binding rule, local rippled `http://rippled:5005`, North Star Holodeck dashboard), SCOPE (the primacy statement above)
-- [REMOTE INFRASTRUCTURE - X17 (LGI)] — SSH facts (user `rbuit`, LGI workdir `D:/LGI`, Windows cmd.exe guidance, `ssh_deploy_file`/`ssh_fetch_file` vault deployment)
+- [REMOTE INFRASTRUCTURE - X17 (LGI)] — SSH facts (user `user`, LGI workdir `D:/LGI`, Windows cmd.exe guidance, `ssh_deploy_file`/`ssh_fetch_file` vault deployment)
 - [SSH REACHABILITY DOCTRINE] — ON/OFF answers, not failures; connection failures map to exact phrasings (OFF / ON but SSH down / auth failure / ON and responding)
 - [REMOTE PROCESS MANAGEMENT RULES] — the `[b]racket` pgrep/pkill trick, nohup + redirect daemon starts, PID-stability proof, JSON-safe command strings, and HONEST REPORTING (never claim an outcome in the same response that performs the action)
 - Tool schemas + **[TOOL USAGE EXAMPLES]** — 10 few-shot pairs covering the full tool surface, all North Star / trading-infrastructure flavored (XRP dashboard publishing, playground listing, sandbox code, trading notes, X17 uptime/connectivity, arbitrage journaling, trading-bot + XRP-price Gotify alerts, QuestDB-lessons vault query) + [TOOL EXECUTION RULE] (the JSON tool-call contract)
@@ -262,7 +262,7 @@ All values are hardcoded constants in `burst_receiver.py` — the service reads 
 | GET | `/api/status` | Gateway status |
 
 ### SSH Target
-- Host: `192.168.50.227` (env `LGI_X17_HOST`, legacy `MINI_PI_HOST` name still honored), user `rbuit`, workdir `D:/LGI` (env `LGI_X17_WORKDIR`, legacy `MINI_PI_WORKDIR` still honored)
+- Host: `192.168.50.227` (env `LGI_X17_HOST`, legacy `MINI_PI_HOST` name still honored), user `user`, workdir `D:/LGI` (env `LGI_X17_WORKDIR`, legacy `MINI_PI_WORKDIR` still honored)
 - Key: `/root/.ssh/id_ed25519` (mounted read-only from `/home/causeiam/.ssh`)
 - Options: `StrictHostKeyChecking=no`, `BatchMode=yes`, `IdentitiesOnly=yes`
 
