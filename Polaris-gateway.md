@@ -18,7 +18,7 @@ Polaris is the private AI assistant and system hub running on the Dell Mainframe
 | LiveCharts | `livecharts` | XRPL asset monitoring page (nginx) on :7001 |
 | WireGuard | `freeroam-wireguard` | Secure tunnel for the FreeRoam Android client (UDP 51820) |
 
-**Operator identity** is resolved in order: explicit `user_id` in the request body (the dashboard sends `rich`/`matt` on the user's behalf) → client IP (`X-Forwarded-For` first hop, else `remote_addr`). Known IPs: `RICH_IP = 192.168.50.42` (Rich), `MATT_IP = 192.168.50.98` (Matt), `OPERATOR_IP = 192.168.50.51` (the Mainframe itself — persona "Operator", operator data files), `DASHBOARD_TEST_IP = 192.168.50.227` (also the X17 / LGI host). WireGuard tunnel aliases (Sep 29, 2026): `MATT_WG_TUNNEL_IP = 10.20.30.2` (Matt's phone inside the `freeroam-wireguard` tunnel) and `DOCKER_HAIRPIN_IP = 172.18.0.1` (the docker-proxy source the tunnel's MASQUERADE'd traffic arrives as after hairpinning the published ports) → both mapped to Matt's data files in Burst Receiver + Chat Gateway. (The historical MissPi→Rich alias ended when MissPi was decommissioned on Sep 30, 2026.) Traffic from other Docker bridge ranges (`172.17.*`–`172.20.*` — NAT-masked) falls back to `DEFAULT_USER_CONFIG` (persona "Dashboard", operator data files). Identity selects the user name, profile/behavior/lists/transcript paths, session partitioning, and chat history.
+**Operator identity** resolves from the client IP first (`X-Forwarded-For` first hop, else `remote_addr`); an explicit `user_id` (REST JSON body / GET query string — the dashboard sends `rich`/`matt` on the user's behalf) can then override it, trust-gated by `resolve_config_with_override()`: the caller must first pass the standard IP gate (exact `USER_CONFIG` match or an allowed Docker-bridge prefix) and the requested identity must match a configured user name, otherwise the IP-derived config stands — honored overrides log `[Chat]` / `[Chat History] Identity override: user_id='…' from IP …`. Known IPs: `RICH_IP = 192.168.50.42` (Rich), `MATT_IP = 192.168.50.98` (Matt), `OPERATOR_IP = 192.168.50.51` (the Mainframe itself — persona "Operator", operator data files), `DASHBOARD_TEST_IP = 192.168.50.227` (also the X17 / LGI host). WireGuard tunnel aliases (Sep 29, 2026): `MATT_WG_TUNNEL_IP = 10.20.30.2` (Matt's phone inside the `freeroam-wireguard` tunnel) and `DOCKER_HAIRPIN_IP = 172.18.0.1` (the docker-proxy source the tunnel's MASQUERADE'd traffic arrives as after hairpinning the published ports) → both mapped to Matt's data files in Burst Receiver + Chat Gateway. (The historical MissPi→Rich alias ended when MissPi was decommissioned on Sep 30, 2026.) Traffic from other Docker bridge ranges (`172.17.*`–`172.20.*` — NAT-masked) falls back to `DEFAULT_USER_CONFIG` (persona "Dashboard", operator data files). Identity selects the user name, profile/behavior/lists/transcript paths, session partitioning, and chat history — chat-history keys additionally funnel through `normalize_chat_identity()` (`SHARED_IDENTITY_ALIASES`: `dashboard` → `rich`, `operator` → `rich`), so LGI voice, the dashboard browser, and any Docker-bridge client share one `rich` bucket (§3.4); `matt` stays partitioned.
 
 **Edge device:** the X17 (Windows 11) at `192.168.50.227`, allowlisted as `DASHBOARD_TEST_IP`, user `rbuit`, LGI workdir `D:/LGI`. Runs the LGI v1.2 "Her Seeing Me" stack (device `x17-webcam`): it provides the `radar_motion` + `vision_frame` feeds into the Burst Receiver (socketio — the IP-ungated path), and its desktop-vision chat turns (screenshot + OCR on `POST /api/chat`) are answered by the Chat Gateway's vision LLM ladder (§3.1). It is also the SSH target for every remote-execution tool (user `rbuit`, cmd.exe default shell — Windows command guidance is baked into the tool schemas and the system prompt). **MissPi / Mini Pi (Raspberry Pi 5) at `192.168.50.179` was fully decommissioned on Sep 30, 2026:** its `ALLOWED_IPS` / `USER_CONFIG` entries were removed from both gateways and from the `ssh_tools.py` defaults; its old storage (`/data/freeroam/misspi/`) is preserved untouched for history.
 
@@ -49,15 +49,15 @@ All services live on the external Docker network `docker-containers_default`.
 
 ### 3.1 REST API
 
-**Chat & History** — one server-side store per operator identity, shared across devices (see §3.4)
+**Chat & History** — one shared server-side store (`dashboard`/`operator` aliased into `rich` by `normalize_chat_identity()`), trust-gated explicit `user_id` override on every endpoint (see §3.4)
 | Method | Route | Purpose |
 |---|---|---|
-| POST | `/api/chat` | Main chat endpoint (LLM + memory context + tool calling); persists both turns to chat history, echoes `chat_message` to the sender's IP room, and emits `tool_execution` when tools run (§3.2 tool pipeline). With `image_base64` it becomes a desktop-vision turn (§3.1 note below) |
+| POST | `/api/chat` | Main chat endpoint (LLM + memory context + tool calling); persists both turns to chat history, echoes `chat_message` to the sender's IP room, and emits `tool_execution` when tools run (§3.2 tool pipeline). With `image_base64` it becomes a desktop-vision turn (§3.1 note below); an explicit `user_id` (trust-gated) overrides the IP-derived identity before both turns are persisted |
 | GET | `/api/history/<user_id>` | Paired user↔Polaris history for a user, dashboard format (identity by path, not IP — the dashboard's 3 s cross-device sync poll) |
-| GET | `/api/chat/history` | Full history for the IP-authenticated user → `{status, user, messages}` (the phone's sync read) |
-| POST | `/api/chat/history` | Replace the IP-authenticated user's full history (`{"messages": [...]}`) |
-| DELETE | `/api/chat/history` | Clear the IP-authenticated user's history |
-| POST | `/api/chat/history/sync` | Append one client-supplied message object (`{"message": {...}}`) to the IP-authenticated user's history |
+| GET | `/api/chat/history` | Full history → `{status, user, messages}` (the phone's sync read); optional `?user_id=<name>` trust-gated override — `user` echoes the caller's resolved display name (e.g. `Rich` vs `Dashboard`) even when both callers share the same bucket |
+| POST | `/api/chat/history` | Replace the IP-authenticated user's full history (`{"messages": [...]}`); optional body `user_id` (same trust policy) |
+| DELETE | `/api/chat/history` | Clear the IP-authenticated user's history; optional body `user_id` (same trust policy) |
+| POST | `/api/chat/history/sync` | Append one client-supplied message object (`{"message": {...}}`) to the IP-authenticated user's history; optional body `user_id` (same trust policy) |
 
 **`POST /api/chat` HTTP return — raw envelope, by design.** The handler ends with `return jsonify(response_data)`, passing the raw Ollama envelope verbatim (unstripped `response` + `thinking`). It is a debug/API surface only — **no rendering path consumes it**: the dashboard's fetch handler discards the HTTP body (§11), the Android app renders only from `GET /api/chat/history`, and every persisted/broadcast surface (transcript, session, chat history, socketio `chat_message`) carries only the stripped prose (§3.2 pipeline).
 
@@ -151,11 +151,12 @@ There is **no** `request_history` handler and no `chat_history` emit — history
 
 ### 3.4 Cross-Device Chat History
 
-One server-side history store per operator identity (`rich` / `matt`), shared by every client — phone, dashboard, any browser — so chat flows across devices.
+One shared server-side store: every read/write path funnels through `normalize_chat_identity()` (`SHARED_IDENTITY_ALIASES`: `dashboard` → `rich`, `operator` → `rich`), applied at the request handlers *and* inside `append_chat_history()` at the storage layer, so LGI voice, the dashboard browser, and any Docker-bridge client converge on one `rich` bucket; `matt` remains partitioned. Legacy `dashboard`/`operator` keys still present in `chat_history.json` are orphaned — no handler or append path can reach them (left archived on disk).
 
 **Storage**
-- In-memory dict `CHAT_HISTORY` keyed by identity, guarded by `CHAT_HISTORY_LOCK`, capped at **200 messages per identity** (oldest dropped on append).
+- In-memory dict `CHAT_HISTORY` keyed by (normalised) identity, guarded by `CHAT_HISTORY_LOCK`, capped at **200 messages per bucket** (rolling `[-200:]` trim after each append).
 - Persisted as JSON to `/data/freeroam/chat_history.json` (host bind `/mnt/containers/freeroam/data/chat_history.json`); loaded on startup; saves run on a daemon thread outside the lock.
+- **One-boot leak scrub** — `scrub_chat_history_leaks()` runs from both entry points (WSGI import + `__main__`, deliberately not from `load_chat_history_from_disk()`): `strip_tool_calls_from_response()` over every stored entry in every bucket, then a one-time sidecar backup `chat_history.json.pre-scrub` (written only if absent, while the on-disk file is still pre-scrub) and an async re-persist; logs `[Chat History] Startup scrub: N leaked entries cleaned` (`0` on an already-clean file). Guards against raw tool-call JSON that predates the unconditional stripper (§3.2).
 - Record shape: `{ "role": "user"|"assistant", "content", "timestamp", "sender" }`.
 
 **Timestamps — Z-suffixed UTC, non-negotiable.** `utc_now_iso()` emits ISO-8601 UTC with a trailing `Z` (e.g. `2026-09-25T01:23:45.678Z`). Android's `Instant.parse()` rejects the legacy formats (`%Y-%m-%d %H:%M:%S`, naive `.isoformat()`); parse failures collapse to `now()`, which corrupted ordering and made the phone's sync loop wholesale-replace its window with stale history. All records must use `utc_now_iso()`.
@@ -167,7 +168,7 @@ One server-side history store per operator identity (`rich` / `matt`), shared by
 
 **Delivery**
 - **Live, on the sending device:** `chat_message` to the sender's per-IP room (§3.2) — the user's own prompt echo and the completed Polaris reply the instant the stream ends; the reply body streams as `chat_stream` chunks.
-- **Cross-device, ≤3 s:** REST polling. The phone polls `GET /api/chat/history` (IP-authenticated) on connect and every 3000 ms (`CHAT_SYNC_INTERVAL_MS`), rebuilding its rolling **10-message** window (`MAX_CHAT_MESSAGES`) whenever the server's newest timestamp beats the local newest, and auto-speaking new Polaris replies (1 s dedupe gate). The dashboard polls `GET /api/history/<user_id>` every 3 s.
+- **Cross-device, ≤3 s:** REST polling. The phone polls `GET /api/chat/history` (IP-authenticated, optional `user_id` override) on connect and every 3000 ms (`CHAT_SYNC_INTERVAL_MS`), rebuilding its rolling **10-message** window (`MAX_CHAT_MESSAGES`) whenever the server's newest timestamp beats the local newest, and auto-speaking new Polaris replies (1 s dedupe gate). The dashboard polls `GET /api/history/<user_id>` every 3 s.
 
 **Vestigial socket events:** the phone emits `request_history` and listens for `chat_history` over Socket.IO; the gateway implements neither. The REST poll loop is the sync path — the WS pair is dead code on the wire.
 
@@ -482,6 +483,7 @@ curl -s http://localhost:7007/api/status             # Sandbox Gateway
 curl -s http://localhost:7000/ | head -5             # Dashboard page
 curl -s http://localhost:11434/api/tags              # Ollama models
 docker exec polaris-gateway tail -50 /data/freeroam/operator/operator_transcripts.log   # transcripts (root-owned bind mount — read inside the container)
+docker logs polaris-gateway 2>&1 | grep -E 'Identity override|Startup scrub'   # identity-override + one-boot history-scrub activity
 docker exec polaris-gateway ls -la /data/state/                    # SQLite state DB (memory_db, §8) — lazy-created on first use; absent right after a recreate is normal
 docker logs polaris-gateway 2>&1 | grep -E 'DEBUG|Tool Execution|GUARDRAIL'              # stripper / parser / guardrail evidence
 ```
