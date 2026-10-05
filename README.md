@@ -584,3 +584,15 @@ The silent-voice era closed with two real root causes — the output-device swit
 * **Qt-slot qFatal — defused**: a PyQt6 `qFatal`-grade abort (`0xc0000409`) inside a Qt slot terminates the process with no traceback. A custom `sys.excepthook` in `lgi.py` @93 logs and survives.
 * **Diagnostics layer (live-tested)**: the TTS `_trace` tee → `%TEMP%\lgi_tts_log.txt` — **permanent** (sealed with a 1 MB truncate-on-open cap; decision closed Sep 30, 2026) and the **first-read triage surface** — voice dead → read `lgi_tts_log.txt` first; missing `worker ready` = boot killed the worker, not the device (LGI.md §10 item 11). Alongside: `%TEMP%\lgi_console.log` (stdout/stderr tee) and `D:\LGI\crash_query.ps1` (WER/dump query). The Phase D probes (`tts_probe.py`, `sd_play_probe.py`, `dep_probe.py`) + `crash_query.ps1` travel with the repo and `D:\LGI`; the four probe SchTasks and %TEMP% probe artifacts were purged after recording (LGI.md §10 item 12).
 * **WATCH (LGI.md §11)**: flaky native boot crash — `cudnn64_9.dll` `0xc0000409` / ntdll heap corruption `0xc0000374` during STT init (two occurrences Sep 30: +2 s boot death and 18:22:31, each recovered by a healthy relaunch; probe artifacts + capped tee unaffected); one uncaptured alert-slot exception (18:03:21 Sep 30) will land in `lgi_console.log` if it recurs. **Oct 4 update**: the class recurred ~daily in silence (ntdll `0xc0000374` / ucrtbase `0xc0000409`) and a second finding joined it — igniting LGI while a session is already live kills the newcomer inside ~1 s (GPU-stack race, proof 15:25:20→21). Double defense shipped Oct 4 late evening: `lgi.py` v1.5.1 takes a `Global\LGI_X17_SingleInstance` mutex before any GPU/audio init (second launch self-refuses — live-tested) and `watchdog.ps1` v2.1 clears the stale session marker at relaunch plus a 3-per-10-min crash-loop brake (cooldown slow-retry while the marker persists). Freshest forensics: pristine 336 MB dump `pythonw.exe.30564.dmp` — WinDbg `!analyze -v` is the next step (Debugging Tools install = operator decision). **Postmortem prep same night: `crash_analyze.ps1` v1.0 shipped to `D:\LGI` — `-Posture` readiness audit, `-Latest`/`-All` one-command cdb `!analyze -v` drivers (reports to `D:\LGI\crash_reports\`), `-EnsureDumps` pinned full-dump capture (keep 15), `-Install` staged the debugger tooling (winget `Microsoft.WinDbg` → Windows-SDK Debuggers fallback; the fallback's single UAC click is the operator's) — the verdict on the 30564 dump lands with the first post-install run. **Verdicts same hour: no UAC needed (WinDbg MSIX ships `amd64\cdb.exe`; winget route won); 30564 = `DOUBLE_FREE ucrtbase!free_base`, 12900 + 19204 = `DOUBLE_FREE cv2.pyd!unknown_function` — the daily spontaneous class is a native double-free in OpenCV's cv2.pyd, not the voice stack; STT/cpu A/B demoted, camera-path A/B is the operator's lever.**
+
+![Bot_swap.png](Bot_swap.png)
+
+![Server_status_1.png](Server_status_1.png)
+![Server_status_2.png](Server_status_2.png)
+![Server_status_3.png](Server_status_3.png)
+
+
+
+
+
+
