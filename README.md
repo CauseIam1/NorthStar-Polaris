@@ -59,6 +59,8 @@ Two phone-side profiles with identical keys and `AllowedIPs = 10.20.30.0/24, 192
 - While a tunnel is active its routes hijack `192.168.50.0/24`; tunnel traffic reaches the gateway MASQUERADE'd and hairpinned as `172.18.0.1` — the docker-proxy hairpin catch-all now resolves to **Rich** (WireGuard-primary restore, 2026-10-03; identity matrix per Polaris-gateway.md §1), with direct tunnel-IP aliases `10.20.30.3` → Rich and `10.20.30.2` → Matt mapped in both the Chat Gateway and Burst Receiver. FreeRoam app WebSocket sessions have also been observed arriving with the real WLAN IP (`192.168.50.42`) while `tun0` is up — expect either path; identity resolves correctly either way. One further WG-off-at-home source: when the phone's WAN-bound traffic exits via the router itself (WireGuard toggled off at home), the gateway sees the router-LAN SNAT source `192.168.50.1` — pinned → **Rich** in both gateways (2026-10-03), same catch-all principle as the hairpin alias.
 - A stray, inert `freeroam` tunnel (from an old `freeroam.conf` in Downloads) sits in the tunnel list — safe to delete; do not enable it at home.
 
+![freeroam.png](freeroam.png)
+
 # Project North Star - Trading Bot & Holodeck Dashboard
 **Document Status: PRODUCTION ACTIVE**
 This section of the document defines the overarching vision, theoretical framework, and operational rules of the ecosystem. It serves as the architectural north star for the private AMM matrix and North Star Holodeck dashboard.
