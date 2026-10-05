@@ -33,6 +33,8 @@ The primary floating HUD and voice cockpit for the Polaris Executive Supervisor 
 | Primary Display | 32-inch Alienware QD-OLED Monitor |
 | Primary Role | Native Python process providing open-mic voice chat and continuous desktop supervision. Secondary capabilities include high-fidelity WebGL rendering for the operator dashboard, manual override, and script staging sandbox. |
 
+![LGI.png](LGI.png)
+
 ## FreeRoam Mobile Edge (Tactical Field Device)
 ### [FreeRoam.md](freeroam/freeroam.md)
 The mobile field-compute device for remote situational awareness — a fully on-device walkie-talkie loop with Polaris (on-device STT in, on-device Kokoro TTS out; only text rides the tunnel). Since v3.5/v3.6 the loop is a streaming conversation: her reply speaks sentence-by-sentence while it generates (speak-while-she-writes, first words ~2-4 s), and playback is fully text-only — no audio artifacts exist anywhere; bubble replay re-synthesizes from text. Canonical app architecture: (v1.0.5 / doc v3.9 — deployed & operator wake-tested Oct 3, 2026: wake-reconnect chat-polarity fix; build keystore pinned to the committed cert, so upgrade lineage is closed — all future container upgrades in-place, see freeroam.md).
