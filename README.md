@@ -1,66 +1,5 @@
 # Project North Star
 
-## The North Star Team — One Intelligence, Three Stations
-
-Polaris is not three programs — she is ONE intelligence embodied across three stations, with the operator as the final authority:
-
-* **The Mainframe (Dell 7910, 192.168.50.51) — brain & hands.** The polaris-gateway container: the `polaris-ai` persona, dual-tier memory with boot-time context restoration (the 20-exchange session window is refilled from chat history at boot, and the repo blueprints are mirrored into her vault and digested into her system prompt — Oct 4, 2026), the `execute_tool_call()` tool dispatcher (§4), task lifecycle tracking, Burst Receiver (:8083) telemetry, and the Sandbox Gateway (:7007). Strictly text-only — the Mainframe never speaks audio.
-* **The X17 (LGI, 192.168.50.227) — senses & voice.** The native LGI process on `D:/LGI`: webcam perception + desktop vision IN (Kokoro TTS + Faster-Whisper STT OUT), and the floating HUD. The device tag `lgi-hud-x17` origin-gates spoken tool reports — only LGI-device-originated exchanges speak aloud; other devices stay silent (LGI.md §7).
-* **FreeRoam (Red Magic 9 Pro over WireGuard) — field presence.** On-device STT → text → on-device Kokoro TTS walkie-talkie; only text crosses the tunnel.
-* **Crew rules.** The operator (Rich / Matt) commands; **Cline** is the shipwright — together they are the ONLY actors who ever edit the repo. Polaris reads the workspace strictly read-only (`/data/workspace:ro` via `list_workspace_files` / `read_workspace_file`) and writes only into her ingest vault (`write_doc`). Each station's contract doc — [LGI.md](LGI.md) for the X17, [Polaris-gateway.md](freeroam/Polaris-gateway.md) for the Mainframe, [FreeRoam.md](freeroam/freeroam.md) for the phone — must stay consistent with this charter.
-
----
-
-## Hardware & System Profiles
-Primary Core Server (The Mainframe)
-The central intelligence and routing hub of the network.
-| Specification | Details |
-|---|---|
-| Core Hardware | Dell Precision 7910 Tower |
-| System Memory | 32GB RAM |
-| Storage Array | Primary 1T SSD (`sdb`) → 914G LVM root `/` (OS, compose projects, `/srv/rippled-data` [rippled + QuestDB data]); Secondary 256GB SSD (`sda`) → `/mnt/containers` (Docker Root Dir); Third 100GB SSD (`sdc`) retired 2026-10-02 — unmounted, fstab entry commented (`nofail`); physical swap to 1TB SSD pending
-| Network Roles | WireGuard Tunnel Host (10.20.30.1), WebSocket Host (192.168.50.51:8765), Polaris Gateway (192.168.50.51:8082) |
-| Primary Role | Heavy compute, local state management, memory integration, burst payload receiving, and backend routing |
-
-## Executive Supervisor Client - LGI 
-### [LGI.md](LGI.md)
-The primary floating HUD and voice cockpit for the Polaris Executive Supervisor system, which additionally hosts the high-fidelity operator console.
-| Specification | Details |
-|---|---|
-| Core Hardware | Alienware X17 Laptop running Windows 11 |
-| Compute & Graphics | NVIDIA GeForce RTX 3080 Ti (16GB GDDR6 VRAM) utilizing CUDA |
-| System Memory | 32GB RAM |
-| Primary Display | 32-inch Alienware QD-OLED Monitor |
-| Primary Role | Native Python process providing open-mic voice chat and continuous desktop supervision. Secondary capabilities include high-fidelity WebGL rendering for the operator dashboard, manual override, and script staging sandbox. |
-
-![LGI.png](LGI.png)
-
-## FreeRoam Mobile Edge (Tactical Field Device)
-### [FreeRoam.md](freeroam/freeroam.md)
-The mobile field-compute device for remote situational awareness — a fully on-device walkie-talkie loop with Polaris (on-device STT in, on-device Kokoro TTS out; only text rides the tunnel). Since v3.5/v3.6 the loop is a streaming conversation: her reply speaks sentence-by-sentence while it generates (speak-while-she-writes, first words ~2-4 s), and playback is fully text-only — no audio artifacts exist anywhere; bubble replay re-synthesizes from text. Canonical app architecture: (v1.0.5 / doc v3.9 — deployed & operator wake-tested Oct 3, 2026: wake-reconnect chat-polarity fix; build keystore pinned to the committed cert, so upgrade lineage is closed — all future container upgrades in-place, see freeroam.md).
-| Specification | Details |
-|---|---|
-| Core Hardware | Red Magic 9 Pro (Android) |
-| Wearable Triggers | Garmin watch media buttons over the always-on AVRCP MediaSession tether — PLAY/PAUSE = push-to-talk toggle, STOP = cancel capture / halt playback, BACK/NEXT disabled (works screen-locked). A silent 60 s seed rests paused while idle (PLAY ready for push-to-talk), loops silently while she speaks (the pause affordance stops her speech and starts the mic), and her full reply takes the track title with a fresh mediaId as she drains — the watch ends every exchange showing her reply and a PLAY button |
-| Audio Output | Bose Ultra Open Earbuds |
-| Local AI Models | Android SpeechRecognizer STT (on-device engine preferred; 2.5 s end-of-speech patience — segment continuation keeps the mic hot through mid-sentence pauses) + Kokoro-82M TTS via sherpa-onnx (fully on-device, no cloud TTS; bf_emma default voice, streamed PCM straight into a persistent 24 kHz AudioTrack — text-only, no WAV artifacts) |
-| Primary Role | Live comms with Polaris (screen-locked Garmin watch push-to-talk; playback survives screen-lock), WireGuard tunneling, and burst transmission to the Dell Mainframe |
-### WireGuard Link Profiles & Home-Network Facts (verified 2026-10-01; rich-cell-over-WiFi re-verified 2026-10-03)
-Two phone-side profiles with identical keys and `AllowedIPs = 10.20.30.0/24, 192.168.50.0/24` — only the Endpoint differs; the server pins each phone via its peer `AllowedIPs` (`10.20.30.3/32` Rich, `10.20.30.2/32` Matt).
-
-| Profile | Endpoint | Valid when |
-|---|---|---|
-| `rich-lan` | `192.168.50.51:51820` | Phone on home WiFi (direct LAN path — preferred at home, no hairpin detour) |
-| `rich-cell` | `64.118.255.235:51820` | Phone off-WiFi (host port-forward). **Also healthy on home WiFi via router hairpin NAT** — re-verified 2026-10-03, superseding the earlier "hairpin disabled / black hole" read: re-handshook within seconds of the phone switching to WiFi, peer endpoint arrives as router-SNAT `192.168.50.1:48189`, tunnel ping 3/3 0% loss, gateway logging `Identity override: user_id='rich'` heartbeats |
-
-- Phone: Red Magic 9 Pro, WLAN `192.168.50.42` (static), tunnel IP `10.20.30.3`. Matt's phone: `192.168.50.98` / `10.20.30.2`.
-- The active tunnel belongs to the **official WireGuard app (`com.wireguard.android`)** — the zaneschepke autotunnel fork is installed but its tunnel list is empty; all import/toggle/diagnostic actions must target `com.wireguard.android`.
-- If the tunnel ever looks frozen (`tun0` up, zero handshakes, nothing reaching the server — the Oct 1 2026 mode was a stale `rich-cell` VpnService black-holing `192.168.50.0/24`; routing itself was re-verified healthy Oct 3, 2026 (hairpin works, see above) — treat a frozen tunnel as stale VpnService first): exorcise and rebuild it in under a minute: `adb shell am force-stop com.wireguard.android` → relaunch → ➕ → Import from file → `/sdcard/Download/rich-lan.conf` → toggle ON. A fresh handshake appears within ~5 s.
-- While a tunnel is active its routes hijack `192.168.50.0/24`; tunnel traffic reaches the gateway MASQUERADE'd and hairpinned as `172.18.0.1` — the docker-proxy hairpin catch-all now resolves to **Rich** (WireGuard-primary restore, 2026-10-03; identity matrix per Polaris-gateway.md §1), with direct tunnel-IP aliases `10.20.30.3` → Rich and `10.20.30.2` → Matt mapped in both the Chat Gateway and Burst Receiver. FreeRoam app WebSocket sessions have also been observed arriving with the real WLAN IP (`192.168.50.42`) while `tun0` is up — expect either path; identity resolves correctly either way. One further WG-off-at-home source: when the phone's WAN-bound traffic exits via the router itself (WireGuard toggled off at home), the gateway sees the router-LAN SNAT source `192.168.50.1` — pinned → **Rich** in both gateways (2026-10-03), same catch-all principle as the hairpin alias.
-- A stray, inert `freeroam` tunnel (from an old `freeroam.conf` in Downloads) sits in the tunnel list — safe to delete; do not enable it at home.
-
-![freeroam.png](freeroam.png)
-
 # Project North Star - Trading Bot & Holodeck Dashboard
 **Document Status: PRODUCTION ACTIVE**
 This section of the document defines the overarching vision, theoretical framework, and operational rules of the ecosystem. It serves as the architectural north star for the private AMM matrix and North Star Holodeck dashboard.
@@ -102,6 +41,8 @@ The bot loads a predefined list of core assets and dynamic routing tokens. It ma
 
 ## 4. Multi-Strategy Execution Engine (The Apex Predator)
 The Trading Bot acts opportunistically within the mesh, executing trades based on **five distinct, simultaneous accumulation strategies** running in parallel:
+
+> **Live mode (since Sept 25, 2026):** `FlipFlopEvaluator` is the sole autonomous-swap engine — §4.1 tranche execution, §4.3, §4.4 and §4.5 swaps are env-gated dormant via `.env` kill switches (MRE ticks analysis-only, FHAE discovery-only, MPT & StagnantPositionMonitor run tracking + alerts only). The operator-driven swap path is **§4.6 Manual Injection Portal** below.
 
 ### 4.1 Mean Reversion Engine (Matrix Rotator - Core Strategy)
 * **Purpose:** Adaptive mean-reversion trading on internal AMM pools with tranche-based laddering.
@@ -151,6 +92,15 @@ The Trading Bot acts opportunistically within the mesh, executing trades based o
   - **Peak Tracking:** Tracks peak ratios and PnLs for all monitored positions.
   - **Stagnation Detection:** Identifies low-variance consolidation after pumps.
   - **Event Logging:** Persists STAGNATION_EXIT events to QuestDB via ManualPositionTrackerService.
+
+### 4.6 Manual Injection Portal (Operator-Driven Revival Swaps — live Oct 5, 2026)
+* **Purpose:** Human-in-the-loop manual inject-swaps through the **bot wallet (MPT_RPN_WALLET_ADDRESS)** to revive dust-frozen meme pairs — a genuine swap re-bases the FlipFlop pair/size and re-arms the engine on the new position.
+* **Surface:** Bot-page right-HUD `InjectionModal` (issuer-aware input/output dropdowns, XRP/RAW spend modes, **pre-flight review panel** — From/To issuer-aware labels, mode-aware spend, converted raw units, XRP value, estimate-only receive, price source, **est. impact (approx)** (micro-probe marginal-rate row: emerald ≤3% / amber ≤5% / red >5% — meme→meme slippage boundary), and one-tap **sizing chips** (6/7.5/10/12/25/50 XRP, XRP mode) — behind a **3s hold-to-confirm**; the single-click deploy / Ctrl+Enter bypass is removed. SKIPPED → amber banner, success → tx hash) → `POST /api/trading-bot/inject-swap` on :8080 (TES execution with fee-preserving pre-flight).
+* **Pricing (cold-start safe):** `OrderBookGraph` edges first; on a cold boot the graph is empty until edges hydrate, so both the XRP-budget conversion and the pool pre-flight fall back to the `AmmPriceOracle` (local `amm_info` marginal prices, 15 s cache). A 400 refusal only when neither source can price the route. `GET /api/radar/assets` feeds the dropdowns (XRP + whitelist memes; stablecoins listed but `injectable: false` per the Zero-Fiat Rule — pass-through routing nodes only).
+* **Validator:** `POST /api/radar/validate-swap` returns `VALID / NO_DIRECT_AMM_POOL / INSUFFICIENT_DEPTH (graph-source only)` plus `priceSource: GRAPH | ORACLE | NONE`; display names auto-normalize to canonical hex via `AssetWhitelist.stringToHex` (idempotent), so plain names like `Hand` or `$TRUMP` paste straight in.
+* **Revival recipe (Oct 5, 2026 — pre-validated, awaiting operator):** 8 injectable memes × 12 XRP = 96 XRP (bot wallet 184.99 XRP): **XAH, SGB, Hand, LedgerGirl, LEDGERGUY, BEAR, ATM, X** — all `VALID / ORACLE`. **DELANI dropped by operator decision (not an asset we care to hold)**; re-addable any time by pasting its issuer into `AssetWhitelist` + one repackage. Injection size is operator-chosen per pool at inject time (sizing chips + est.-impact row: ~6–8 XRP on the shallowest pools up to 25–50 XRP on the deepest); the autonomous flop engine mirrors the same boundary with the phase-4 retune (`FLIPFLOP_FLOP_SPEND_CAP_XRP=7.5`, `FLIPFLOP_SLIPPAGE_TOLERANCE=0.05`, `FLIPFLOP_MIN_POSITION_XRP=5`).
+* **Full implementation details:** [trading-bot.md](trading-bot/trading-bot.md) — "Manual Injection Portal" section in Recent Additions.
+
 ## 5. Real-Time Infrastructure
 
 ### 5.1 QuestDB State Ingestion
@@ -189,7 +139,7 @@ The Trading Bot acts opportunistically within the mesh, executing trades based o
 * **Styling:** Tailwind CSS (high-contrast dark themes for operations terminal)
 * **Visualization:** Recharts for real-time telemetry dashboards
 * **Pages:**
-  - **Bot Page:** Live view into MPT_RPN_WALLET_ADDRESS trading activity (graphical)
+  - **Bot Page:** Live view into MPT_RPN_WALLET_ADDRESS trading activity (graphical) — includes the right-HUD Swap, Telemetry & Injection console with the issuer-aware `InjectionModal` (dropdowns fed by `GET /api/radar/assets`)
   - **Radar Page:** Manual swapping interface for TRADING_WALLET_ADDRESS with Xaman push-to-sign
 
 ### Database
@@ -210,6 +160,7 @@ To eliminate all mock data and drive the 3D canvas with live production metrics,
 | **Radar Page (Manual Swaps)** | `trading_balances` | `SELECT * FROM trading_balances LATEST BY asset;` | Isolates current manual wallet positions to render active sniper nodes. |
 | **Matrix & Pulse HUDs** | `xrp_stack_snapshots` | `SELECT * FROM xrp_stack_snapshots ORDER BY timestamp DESC LIMIT 1;` | Feeds the **80/20 Redline visualizer** and proportion models across Cold, Trading, and Bot wallets. |
 | **Bot Page (Events & Comms tabs)** | `bot_events` | `GET /api/trading-bot/bot-events` — Next.js route handler (:3000) → `pg` pool → QuestDB `questdb:8812` (last 200 rows, newest-first) | Live swap-lifecycle feed: **Events tab** renders executions (`SWAP_EXECUTED` with tx hashes, flips, force-exits, stagnation exits, manual injections); **Comms tab** renders failures/blocks/skips (`SWAP_FAILED` / `SWAP_BLOCKED` / `SWAP_SKIPPED`, 60 s-throttled per pair) + WARN/ERROR alert beacon. Java write path: TES `emitSwapEvent` → `DatabaseService.logBotEvent` (live-verified 2026-10-04: `FLIPFLOP_DUST_SKIPPED @ 17:50:20 UTC` matched the bot log to the second). |
+
 **Developer Implementation Note:** All live balance updates must use standard `LATEST BY` state collapses to ensure historical snapshot rows do not duplicate active 3D nodes. **Exception — event-log feeds:** `bot_events` is an append-only audit history, not a state snapshot — read newest-first (`ORDER BY timestamp DESC`) via the `/api/trading-bot/bot-events` dashboard route handler (:3000, `pg` pool → QuestDB); collapsing it with `LATEST BY` would erase the event trail the Events/Comms tabs exist to display.
 
 
@@ -223,7 +174,63 @@ To eliminate all mock data and drive the 3D canvas with live production metrics,
 
 /docker-containers/trading-dashboard/src/app/comms/CommsPage.md
 
+## The North Star Team — One Intelligence, Three Stations
 
+Polaris is not three programs — she is ONE intelligence embodied across three stations, with the operator as the final authority:
+
+* **The Mainframe (Dell 7910, 192.168.50.51) — brain & hands.** The polaris-gateway container: the `polaris-ai` persona, dual-tier memory with boot-time context restoration (the 20-exchange session window is refilled from chat history at boot, and the repo blueprints are mirrored into her vault and digested into her system prompt — Oct 4, 2026), the `execute_tool_call()` tool dispatcher (§4), task lifecycle tracking, Burst Receiver (:8083) telemetry, and the Sandbox Gateway (:7007). Strictly text-only — the Mainframe never speaks audio.
+* **The X17 (LGI, 192.168.50.227) — senses & voice.** The native LGI process on `D:/LGI`: webcam perception + desktop vision IN (Kokoro TTS + Faster-Whisper STT OUT), and the floating HUD. Her hands are teachable since LGI v1.6.0: a voice lesson ("Polaris, teach a gesture" → hold the pose ~3 s → speak its meaning) records a position/scale-invariant landmark signature into `D:\LGI\taught_gestures.json`, and the same webcam Hands pass then recognizes the rehearsed pose at runtime, firing a `taught:<name>:<action>` command (LGI.md §6.11). The device tag `lgi-hud-x17` origin-gates spoken tool reports — only LGI-device-originated exchanges speak aloud; other devices stay silent (LGI.md §7).
+* **FreeRoam (Red Magic 9 Pro over WireGuard) — field presence.** On-device STT → text → on-device Kokoro TTS walkie-talkie; only text crosses the tunnel.
+* **Crew rules.** The operator (Rich / Matt) commands; **Cline** is the shipwright — together they are the ONLY actors who ever edit the repo. Polaris reads the workspace strictly read-only (`/data/workspace:ro` via `list_workspace_files` / `read_workspace_file`) and writes only into her ingest vault (`write_doc`). Each station's contract doc — [LGI.md](LGI.md) for the X17, [Polaris-gateway.md](freeroam/Polaris-gateway.md) for the Mainframe, [FreeRoam.md](freeroam/freeroam.md) for the phone — must stay consistent with this charter.
+
+---
+
+## Hardware & System Profiles
+Primary Core Server (The Mainframe)
+The central intelligence and routing hub of the network.
+| Specification | Details |
+|---|---|
+| Core Hardware | Dell Precision 7910 Tower |
+| System Memory | 32GB RAM |
+| Storage Array | Primary 1T SSD (`sdb`) → 914G LVM root `/` (OS, compose projects, `/srv/rippled-data` [rippled + QuestDB data]); Secondary 256GB SSD (`sda`) → `/mnt/containers` (Docker Root Dir); Third 100GB SSD (`sdc`) retired 2026-10-02 — unmounted, fstab entry commented (`nofail`); physical swap to 1TB SSD pending
+| Network Roles | WireGuard Tunnel Host (10.20.30.1), WebSocket Host (192.168.50.51:8765), Polaris Gateway (192.168.50.51:8082) |
+| Primary Role | Heavy compute, local state management, memory integration, burst payload receiving, and backend routing |
+
+## Executive Supervisor Client - LGI 
+### [LGI.md](LGI.md)
+The primary floating HUD and voice cockpit for the Polaris Executive Supervisor system, which additionally hosts the high-fidelity operator console.
+| Specification | Details |
+|---|---|
+| Core Hardware | Alienware X17 Laptop running Windows 11 |
+| Compute & Graphics | NVIDIA GeForce RTX 3080 Ti (16GB GDDR6 VRAM) utilizing CUDA |
+| System Memory | 32GB RAM |
+| Primary Display | 32-inch Alienware QD-OLED Monitor |
+| Primary Role | Native Python process providing open-mic voice chat and continuous desktop supervision. Secondary capabilities include high-fidelity WebGL rendering for the operator dashboard, manual override, and script staging sandbox. |
+| Gesture Learning (v1.6.0) | Taught gestures via `gesture_teaching.py` — voice lessons ("Polaris, teach a gesture" → hold pose ~3 s → name it; also "forget gesture <name>" / "list gestures") persist position/scale-invariant landmark profiles in `D:\LGI\taught_gestures.json`; runtime recognition (behind `LGI_TAUGHT_GESTURES`, auto-inactive until the first profile exists) fires `taught:<name>:<action>` with per-profile thresholds/cooldowns (LGI.md §6.11) |
+
+## FreeRoam Mobile Edge (Tactical Field Device)
+### [FreeRoam.md](freeroam/freeroam.md)
+The mobile field-compute device for remote situational awareness — a fully on-device walkie-talkie loop with Polaris (on-device STT in, on-device Kokoro TTS out; only text rides the tunnel). Since v3.5/v3.6 the loop is a streaming conversation: her reply speaks sentence-by-sentence while it generates (speak-while-she-writes, first words ~2-4 s), and playback is fully text-only — no audio artifacts exist anywhere; bubble replay re-synthesizes from text. Canonical app architecture: (v1.0.5 / doc v3.9 — deployed & operator wake-tested Oct 3, 2026: wake-reconnect chat-polarity fix; build keystore pinned to the committed cert, so upgrade lineage is closed — all future container upgrades in-place, see freeroam.md).
+| Specification | Details |
+|---|---|
+| Core Hardware | Red Magic 9 Pro (Android) |
+| Wearable Triggers | Garmin watch media buttons over the always-on AVRCP MediaSession tether — PLAY/PAUSE = push-to-talk toggle, STOP = cancel capture / halt playback, BACK/NEXT disabled (works screen-locked). A silent 60 s seed rests paused while idle (PLAY ready for push-to-talk), loops silently while she speaks (the pause affordance stops her speech and starts the mic), and her full reply takes the track title with a fresh mediaId as she drains — the watch ends every exchange showing her reply and a PLAY button |
+| Audio Output | Bose Ultra Open Earbuds |
+| Local AI Models | Android SpeechRecognizer STT (on-device engine preferred; 2.5 s end-of-speech patience — segment continuation keeps the mic hot through mid-sentence pauses) + Kokoro-82M TTS via sherpa-onnx (fully on-device, no cloud TTS; bf_emma default voice, streamed PCM straight into a persistent 24 kHz AudioTrack — text-only, no WAV artifacts) |
+| Primary Role | Live comms with Polaris (screen-locked Garmin watch push-to-talk; playback survives screen-lock), WireGuard tunneling, and burst transmission to the Dell Mainframe |
+### WireGuard Link Profiles & Home-Network Facts (verified 2026-10-01; rich-cell-over-WiFi re-verified 2026-10-03)
+Two phone-side profiles with identical keys and `AllowedIPs = 10.20.30.0/24, 192.168.50.0/24` — only the Endpoint differs; the server pins each phone via its peer `AllowedIPs` (`10.20.30.3/32` Rich, `10.20.30.2/32` Matt).
+
+| Profile | Endpoint | Valid when |
+|---|---|---|
+| `rich-lan` | `192.168.50.51:51820` | Phone on home WiFi (direct LAN path — preferred at home, no hairpin detour) |
+| `rich-cell` | `64.118.255.235:51820` | Phone off-WiFi (host port-forward). **Also healthy on home WiFi via router hairpin NAT** — re-verified 2026-10-03, superseding the earlier "hairpin disabled / black hole" read: re-handshook within seconds of the phone switching to WiFi, peer endpoint arrives as router-SNAT `192.168.50.1:48189`, tunnel ping 3/3 0% loss, gateway logging `Identity override: user_id='rich'` heartbeats |
+
+- Phone: Red Magic 9 Pro, WLAN `192.168.50.42` (static), tunnel IP `10.20.30.3`. Matt's phone: `192.168.50.98` / `10.20.30.2`.
+- The active tunnel belongs to the **official WireGuard app (`com.wireguard.android`)** — the zaneschepke autotunnel fork is installed but its tunnel list is empty; all import/toggle/diagnostic actions must target `com.wireguard.android`.
+- If the tunnel ever looks frozen (`tun0` up, zero handshakes, nothing reaching the server — the Oct 1 2026 mode was a stale `rich-cell` VpnService black-holing `192.168.50.0/24`; routing itself was re-verified healthy Oct 3, 2026 (hairpin works, see above) — treat a frozen tunnel as stale VpnService first): exorcise and rebuild it in under a minute: `adb shell am force-stop com.wireguard.android` → relaunch → ➕ → Import from file → `/sdcard/Download/rich-lan.conf` → toggle ON. A fresh handshake appears within ~5 s.
+- While a tunnel is active its routes hijack `192.168.50.0/24`; tunnel traffic reaches the gateway MASQUERADE'd and hairpinned as `172.18.0.1` — the docker-proxy hairpin catch-all now resolves to **Rich** (WireGuard-primary restore, 2026-10-03; identity matrix per Polaris-gateway.md §1), with direct tunnel-IP aliases `10.20.30.3` → Rich and `10.20.30.2` → Matt mapped in both the Chat Gateway and Burst Receiver. FreeRoam app WebSocket sessions have also been observed arriving with the real WLAN IP (`192.168.50.42`) while `tun0` is up — expect either path; identity resolves correctly either way. One further WG-off-at-home source: when the phone's WAN-bound traffic exits via the router itself (WireGuard toggled off at home), the gateway sees the router-LAN SNAT source `192.168.50.1` — pinned → **Rich** in both gateways (2026-10-03), same catch-all principle as the hairpin alias.
+- A stray, inert `freeroam` tunnel (from an old `freeroam.conf` in Downloads) sits in the tunnel list — safe to delete; do not enable it at home.
 
 # Polaris Gateway
 
@@ -252,7 +259,7 @@ Connected Hardware & Infrastructure
  * Dell Mainframe (192.168.50.51): Host server running Docker container instances, Ollama LLM (11434), QuestDB (8812), and WireGuard host (10.20.30.1).
  * Alienware X17 Laptop: Operator command console rendering North Star Holodeck 3D dashboards; hosts the LGI Executive Supervisor Client (native HUD/voice/vision cockpit over the gateway on :8082, with spatial telemetry to the Burst Receiver on :8083). The X17 is also the ecosystem's sole Kokoro TTS / Faster-Whisper STT host (text-only mainframe directive, Oct 2026).
  * Red Magic 9 Pro: Tactical field device running the FreeRoam Android app (v3.6 streaming voice comms, deployed Sep 28, 2026) — Bose Ultra Open Earbuds coms, Even G2 Smart Glasses with ring, and Garmin watch push-to-talk over the always-on AVRCP MediaSession keep-alive tether. ADB-over-WiFi listener at `192.168.50.42:5555` — the gateway container is an authorized ADB client (trusted keypair mounted) and drives the phone from Polaris tooling; `com.freeroam.tactical` is doze-whitelisted so its 3 s chat poll survives screen-off.
- * Alienware X17 / LGI (192.168.50.227): Windows 11 edge unit — Polaris's eyes and ears (LGI webcam perception, device 'x17-webcam'; SSH user rbuit, LGI workdir D:/LGI). (MissPi / Mini Pi at 192.168.50.179 was fully decommissioned Sep 30, 2026.)
+ * Alienware X17 / LGI (192.168.50.227): Windows 11 edge unit — Polaris's eyes and ears (LGI webcam perception, device 'x17-webcam'; SSH user rbuit, LGI workdir D:/LGI) and the taught-gesture host (LGI v1.6.0 — voice lessons persist landmark profiles to D:/LGI/taught_gestures.json and device-local runtime recognition fires taught:<name>:<action> commands; the gateway still sees only the unchanged vision_frame / radar_motion feeds). (MissPi / Mini Pi at 192.168.50.179 was fully decommissioned Sep 30, 2026.)
 
 # Polaris Gateway & Cross-Device Communications
 
@@ -396,9 +403,9 @@ Identity resolves from the client IP (`X-Forwarded-For` first hop, else `remote_
 * **Modelfile mirror**: `polaris-ai:latest` is defined by `freeroam/polaris-gateway/Modelfile` — `FROM glm-5.3-flash:cloud`, temperature 0.7, `num_ctx 32768` (v3.4), carrying the same North Star primacy block in its SYSTEM text. Modelfile edits apply via `ollama create polaris-ai:latest -f <Modelfile>` — an instant manifest swap on the running Ollama container, no restart.
 
 ### Server-Side Tool Pipeline & Response Stripper (identical on REST /api/chat and the WS message handler)
-* The Ollama stream is scanned for tool-call markers with a 48-char hold-back buffer (`STREAM_HOLD_BACK`); on a `{"tool": …}` marker the stream **freezes** and only the preceding prose is emitted. After the stream: parse → strip → execute via `execute_tool_call()` → broadcast `tool_execution` with the real results — only the **cleaned prose** is flushed to the stream, persisted, echoed via `chat_message`, and fed to the session window. Raw tool JSON never reaches clients, history, memory, or future-turn context.
+* The Ollama stream is scanned for tool-call markers with a 48-char hold-back buffer (`STREAM_HOLD_BACK`); on a `{"tool": …}` marker the stream **freezes** and only the preceding prose is emitted. After the stream: parse → strip → execute via `execute_tool_call()` → broadcast `tool_execution` with the real results — only the **cleaned prose** is flushed to the stream, fed to the session window, and on tool-less turns persisted + echoed via `chat_message` — on tool turns the narration never becomes a history row/broadcast (v1.6.2 one-reply-per-turn; the truthful report is the turn's only record). Raw tool JSON never reaches clients, history, memory, or future-turn context.
 * **The stripper closes three leak vectors** (text cleanup only — parser/execution semantics untouched): malformed tool JSON naming a known tool (union via `_known_tool_names()`, `[DEBUG]` log evidence); legacy inline calls (`read_doc(...)`, `run_sandbox_code(...)`, …) stripped with the same shapes the parser matches; empty `json` fences + triple-newline collapse.
-* **Truthful tool-report turn**: when tools ran, a second LLM pass over the real results (large fields truncated to 1,500 chars by `_truncate_tool_results()` — document `content` alone carries an 8,000-char budget, matching `read_doc`'s hard page cap) produces a reporting-only follow-up — never claims success on a failure, plain text, no further tool calls; the report turn itself is stripped so it cannot recurse, the `generate_follow_up_message()` fallback is result-aware, and the turn is persisted as a third history record (`Polaris (tool report)`).
+* **Truthful tool-report turn**: when tools ran, a second LLM pass over the real results (large fields truncated to 1,500 chars by `_truncate_tool_results()` — document `content` alone carries an 8,000-char budget, matching `read_doc`'s hard page cap) produces a reporting-only follow-up — never claims success on a failure, plain text, no further tool calls; the report turn itself is stripped so it cannot recurse, the `generate_follow_up_message()` fallback is result-aware, and the turn is persisted as that exchange's single assistant history record (`Polaris (tool report)` — the pre-tool narration is never appended as one, v1.6.2).
 * **Paged document access (v3.4)**: `read_doc` is offset-based — up to 8,000 chars per page with `has_more` / `next_offset` navigation — so she walks large vault files (the bind-mounted `northstar.md` and `Polaris-gateway.md` are her authoritative read-only mirrors) across conversational turns instead of receiving a 1,500-char sliver.
 * **HTTP `/api/chat` returns the raw Ollama envelope by design** (unstripped `response` + `thinking`) — a debug/API surface with **no rendering path**: the dashboard's fetch discards the HTTP body (chat bubbles render exclusively from `chat_message` broadcasts), and Android renders only from `GET /api/chat/history`.
 * **Cross-device chat history**: one shared server-side store — `dashboard`/`operator` identities alias into the single **rich** bucket (`normalize_chat_identity()`, applied at the handlers *and* inside `append_chat_history()`), covering LGI voice, dashboard, phone, and bridge-origin clients; **matt** stays partitioned. 200-message rolling cap per bucket (`[-200:]` trim on append), persisted to `/data/freeroam/chat_history.json`; a one-boot startup scrub (`scrub_chat_history_leaks()`) strips raw tool-call JSON from every stored entry, keeping a one-time `chat_history.json.pre-scrub` sidecar backup (legacy `dashboard`/`operator` keys in the JSON are orphaned, left archived). Timestamps are Z-suffixed UTC (`utc_now_iso()`) — mandatory for Android's `Instant.parse()`. Live delivery via per-IP-room `chat_message`; cross-device sync via REST polling (≤3 s; explicit `user_id` overrides are trust-gated by the standard IP gate). The phone's `request_history`/`chat_history` WS pair is vestigial dead code — no handler exists.
@@ -584,15 +591,3 @@ The silent-voice era closed with two real root causes — the output-device swit
 * **Qt-slot qFatal — defused**: a PyQt6 `qFatal`-grade abort (`0xc0000409`) inside a Qt slot terminates the process with no traceback. A custom `sys.excepthook` in `lgi.py` @93 logs and survives.
 * **Diagnostics layer (live-tested)**: the TTS `_trace` tee → `%TEMP%\lgi_tts_log.txt` — **permanent** (sealed with a 1 MB truncate-on-open cap; decision closed Sep 30, 2026) and the **first-read triage surface** — voice dead → read `lgi_tts_log.txt` first; missing `worker ready` = boot killed the worker, not the device (LGI.md §10 item 11). Alongside: `%TEMP%\lgi_console.log` (stdout/stderr tee) and `D:\LGI\crash_query.ps1` (WER/dump query). The Phase D probes (`tts_probe.py`, `sd_play_probe.py`, `dep_probe.py`) + `crash_query.ps1` travel with the repo and `D:\LGI`; the four probe SchTasks and %TEMP% probe artifacts were purged after recording (LGI.md §10 item 12).
 * **WATCH (LGI.md §11)**: flaky native boot crash — `cudnn64_9.dll` `0xc0000409` / ntdll heap corruption `0xc0000374` during STT init (two occurrences Sep 30: +2 s boot death and 18:22:31, each recovered by a healthy relaunch; probe artifacts + capped tee unaffected); one uncaptured alert-slot exception (18:03:21 Sep 30) will land in `lgi_console.log` if it recurs. **Oct 4 update**: the class recurred ~daily in silence (ntdll `0xc0000374` / ucrtbase `0xc0000409`) and a second finding joined it — igniting LGI while a session is already live kills the newcomer inside ~1 s (GPU-stack race, proof 15:25:20→21). Double defense shipped Oct 4 late evening: `lgi.py` v1.5.1 takes a `Global\LGI_X17_SingleInstance` mutex before any GPU/audio init (second launch self-refuses — live-tested) and `watchdog.ps1` v2.1 clears the stale session marker at relaunch plus a 3-per-10-min crash-loop brake (cooldown slow-retry while the marker persists). Freshest forensics: pristine 336 MB dump `pythonw.exe.30564.dmp` — WinDbg `!analyze -v` is the next step (Debugging Tools install = operator decision). **Postmortem prep same night: `crash_analyze.ps1` v1.0 shipped to `D:\LGI` — `-Posture` readiness audit, `-Latest`/`-All` one-command cdb `!analyze -v` drivers (reports to `D:\LGI\crash_reports\`), `-EnsureDumps` pinned full-dump capture (keep 15), `-Install` staged the debugger tooling (winget `Microsoft.WinDbg` → Windows-SDK Debuggers fallback; the fallback's single UAC click is the operator's) — the verdict on the 30564 dump lands with the first post-install run. **Verdicts same hour: no UAC needed (WinDbg MSIX ships `amd64\cdb.exe`; winget route won); 30564 = `DOUBLE_FREE ucrtbase!free_base`, 12900 + 19204 = `DOUBLE_FREE cv2.pyd!unknown_function` — the daily spontaneous class is a native double-free in OpenCV's cv2.pyd, not the voice stack; STT/cpu A/B demoted, camera-path A/B is the operator's lever.**
-
-![Bot_swap.png](Bot_swap.png)
-
-![Server_status_1.png](Server_status_1.png)
-![Server_status_2.png](Server_status_2.png)
-![Server_status_3.png](Server_status_3.png)
-
-
-
-
-
-
