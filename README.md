@@ -3,7 +3,7 @@
 # Project North Star - Trading Bot & Holodeck Dashboard
 **Document Status: PRODUCTION ACTIVE**
 This section of the document defines the overarching vision, theoretical framework, and operational rules of the ecosystem. It serves as the architectural north star for the private AMM matrix and North Star Holodeck dashboard.
-
+ 
 ## 1. System Purpose & The Zero-Fiat Philosophy
 This ecosystem is an open-venue inventory management and mesh rebalancing engine operating on the XRP Ledger. It routes through whichever executable venue is cheapest for a whitelisted pair: operator-owned AMM pools, third-party AMM pools, direct XRP order books, or XRP-bridged multi-hop routes.
 
